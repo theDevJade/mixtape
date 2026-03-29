@@ -180,9 +180,17 @@ class DiscordRpcService {
 
   Future<void> disconnect() async {
     _log('disconnect called');
-    await _readySub?.cancel();
-    await _disconnectedSub?.cancel();
-    await _errorSub?.cancel();
+    _connected = false;
+
+    try {
+      await _readySub?.cancel();
+    } catch (_) {}
+    try {
+      await _disconnectedSub?.cancel();
+    } catch (_) {}
+    try {
+      await _errorSub?.cancel();
+    } catch (_) {}
     _readySub = null;
     _disconnectedSub = null;
     _errorSub = null;
@@ -196,7 +204,6 @@ class DiscordRpcService {
     }
 
     _rpc = null;
-    _connected = false;
     _clientId = null;
     _log('disconnect complete');
   }
@@ -210,12 +217,18 @@ class DiscordRpcService {
       _connected = false;
       _log('onDisconnected received; connected=false');
     });
-    _errorSub ??= rpc.onError.listen((event) {
-      _connected = false;
-      _log(
-        'onError received; code=${event.errorCode} message=${event.message}',
-      );
-    });
+    _errorSub ??= rpc.onError.listen(
+      (event) {
+        _connected = false;
+        _log(
+          'onError received; code=${event.errorCode} message=${event.message}',
+        );
+      },
+      onError: (e) {
+        _connected = false;
+        _log('onError stream error (broken pipe / socket): $e');
+      },
+    );
   }
 }
 

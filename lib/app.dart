@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -69,33 +71,38 @@ class _AppRoot extends ConsumerStatefulWidget {
 class _AppRootState extends ConsumerState<_AppRoot>
     with WidgetsBindingObserver {
   int? _lastPresenceBucket;
+  StreamSubscription<int>? _trackChangeSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Kick off initial connection attempt after first frame.
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _updateDiscordPresence(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final handler = ref.read(audioHandlerProvider);
+
+      // Primary path: the handler's trackChangeStream fires only on real
+      // index changes (debounced inside _onIndexChanged).
+      _trackChangeSub = handler.trackChangeStream.listen((index) {
+        if (index < handler.trackQueue.length) {
+          final track = handler.trackQueue[index];
+          developer.log(
+            '[SYNC] trackChangeStream index=$index '
+            'title="${track.title}"',
+            name: 'mixtape.sync',
+          );
+          ref.read(currentTrackProvider.notifier).state = track;
+        }
+      });
+
+      _updateDiscordPresence();
+    });
   }
 
   @override
   void dispose() {
+    _trackChangeSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    // When the window regains focus (macOS, Linux, Windows) the position
-    // StreamProvider may have stale UI because Flutter throttles frame
-    // scheduling for unfocused windows.  Invalidating forces a fresh
-    // subscription that immediately emits the current player state.
-    if (state == AppLifecycleState.resumed) {
-      ref.invalidate(positionDataProvider);
-    }
   }
 
   Future<void> _updateDiscordPresence() async {
@@ -307,6 +314,25 @@ class _AppRootState extends ConsumerState<_AppRoot>
     // Refresh timestamps periodically while playing so seek/scrub stays accurate.
     ref.listen<AsyncValue<PositionData>>(positionDataProvider, (_, next) async {
       final isPlaying = ref.read(isPlayingProvider).valueOrNull ?? false;
+
+      // ── Fallback track-sync: runs every position tick (~200ms) ──
+      // If the stream-based trackChangeStream misses an auto-advance (e.g.
+      // due to platform timing quirks), this catches the desync.
+      final handler = ref.read(audioHandlerProvider);
+      final playerIdx = handler.currentIndex;
+      if (playerIdx != null && playerIdx < handler.trackQueue.length) {
+        final expected = handler.trackQueue[playerIdx];
+        final shown = ref.read(currentTrackProvider);
+        if (shown != expected) {
+          developer.log(
+            '[SYNC] fallback fix: playerIdx=$playerIdx '
+            'expected="${expected.title}" shown="${shown?.title}"',
+            name: 'mixtape.sync',
+          );
+          ref.read(currentTrackProvider.notifier).state = expected;
+        }
+      }
+
       if (!isPlaying) return;
 
       final positionSeconds = next.valueOrNull?.position.inSeconds;

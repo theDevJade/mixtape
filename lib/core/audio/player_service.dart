@@ -1,6 +1,5 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
 import '../database/daos/tracks_dao.dart';
 import '../models/track.dart';
@@ -31,9 +30,9 @@ class PositionData {
 final positionDataProvider = StreamProvider<PositionData>((ref) {
   final handler = ref.watch(audioHandlerProvider);
   return Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
-    handler.player.positionStream,
-    handler.player.bufferedPositionStream,
-    handler.player.durationStream,
+    handler.positionStream,
+    handler.bufferedPositionStream,
+    handler.durationStream,
     (pos, buf, dur) => PositionData(
       position: pos,
       bufferedPosition: buf,
@@ -46,7 +45,7 @@ final positionDataProvider = StreamProvider<PositionData>((ref) {
 
 final isPlayingProvider = StreamProvider<bool>((ref) {
   final handler = ref.watch(audioHandlerProvider);
-  return handler.player.playingStream;
+  return handler.playingStream;
 });
 
 final currentTrackProvider = StateProvider<Track?>((ref) => null);
@@ -58,7 +57,7 @@ final shuffleProvider = StateProvider<bool>((ref) => false);
 final repeatModeProvider = StateProvider<LoopMode>((ref) => LoopMode.off);
 
 final currentIndexProvider = StreamProvider<int?>((ref) {
-  return ref.watch(audioHandlerProvider).player.currentIndexStream;
+  return ref.watch(audioHandlerProvider).trackChangeStream.map<int?>((i) => i);
 });
 
 final playbackSpeedProvider = StateProvider<double>((ref) => 1.0);
@@ -112,7 +111,7 @@ class PlayerService {
 
   Future<void> playNext(Track track) async {
     final current = List<Track>.from(_ref.read(queueProvider));
-    final idx = (_handler.player.currentIndex ?? 0) + 1;
+    final idx = (_handler.currentIndex ?? 0) + 1;
     current.insert(idx, track);
     _ref.read(queueProvider.notifier).state = current;
     await _handler.playNext(track);
@@ -273,24 +272,11 @@ class PlayerService {
 
 final playerServiceProvider = Provider<PlayerService>((ref) {
   final handler = ref.watch(audioHandlerProvider);
-  // Keep currentTrackProvider in sync when just_audio auto-advances the queue.
-  final sub = handler.player.currentIndexStream.listen((index) {
-    if (index != null && index < handler.trackQueue.length) {
-      ref.read(currentTrackProvider.notifier).state = handler.trackQueue[index];
-    }
-  });
-  ref.onDispose(sub.cancel);
   return PlayerService(handler, ref);
 });
 
 // ── EQ providers (Android only) ─────────────────────────────────────────────
 
-final androidEqualizerProvider = Provider<AndroidEqualizer?>((ref) {
-  return ref.watch(audioHandlerProvider).androidEqualizer;
-});
-
-final androidLoudnessEnhancerProvider = Provider<AndroidLoudnessEnhancer?>((
-  ref,
-) {
-  return ref.watch(audioHandlerProvider).androidLoudnessEnhancer;
-});
+// Android EQ is not available with media_kit — these remain for API compat.
+final androidEqualizerProvider = Provider<dynamic>((ref) => null);
+final androidLoudnessEnhancerProvider = Provider<dynamic>((ref) => null);

@@ -3,7 +3,7 @@ import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:media_kit/media_kit.dart' hide Track;
 import 'audio_file_cache.dart';
 import 'duration_correction.dart' as dc;
 import '../models/track.dart';
@@ -14,29 +14,25 @@ void _log(Object? message) {
   developer.log('${message ?? ''}', name: 'mixtape.audio');
 }
 
-/// Bridges just_audio with the system media controls via audio_service.
+/// Our own loop-mode enum, replacing just_audio's LoopMode.
+enum LoopMode { off, one, all }
+
+/// Bridges media_kit with the system media controls via audio_service.
 ///
-/// On Android, an [AndroidEqualizer] and [AndroidLoudnessEnhancer] are wired
-/// into the [AudioPipeline] and exposed as public fields so the EQ screen can
-/// modify them. On all other platforms these fields are null.
+/// Queue management is handled manually (one track at a time via
+/// [Player.open]) to avoid playlist-manipulation bugs.  Auto-advance is
+/// driven by [Player.stream.completed].
 class MixtapeAudioHandler extends BaseAudioHandler
     with QueueHandler, SeekHandler {
-  final AudioPlayer _player;
+  final Player _player;
   final PluginRegistry _registry;
   final AudioFileCache _audioFileCache = AudioFileCache.instance;
-  final StreamProxy _proxy = StreamProxy();
   bool _cacheAudioFiles;
-  double _volume;
+  double _volume; // 0.0 – 1.0 (converted to 0–100 for media_kit)
   bool _boundaryMicroFadeEnabled = false;
   Duration _boundaryMicroFadeDuration = const Duration(milliseconds: 180);
   Timer? _boundaryFadeTimer;
   int _boundaryFadeToken = 0;
-
-  /// Non-null on Android only.
-  final AndroidEqualizer? androidEqualizer;
-
-  /// Non-null on Android only.
-  final AndroidLoudnessEnhancer? androidLoudnessEnhancer;
 
   factory MixtapeAudioHandler(
     PluginRegistry registry, {
@@ -45,28 +41,9 @@ class MixtapeAudioHandler extends BaseAudioHandler
     bool crossfadeEnabled = false,
     int crossfadeDurationSeconds = 0,
   }) {
-    if (Platform.isAndroid) {
-      final eq = AndroidEqualizer();
-      final loudness = AndroidLoudnessEnhancer();
-      final player = AudioPlayer(
-        audioPipeline: AudioPipeline(androidAudioEffects: [eq, loudness]),
-      );
-      return MixtapeAudioHandler._(
-        registry,
-        player,
-        eq,
-        loudness,
-        cacheAudioFiles,
-        volume,
-        crossfadeEnabled,
-        crossfadeDurationSeconds,
-      );
-    }
     return MixtapeAudioHandler._(
       registry,
-      AudioPlayer(),
-      null,
-      null,
+      Player(),
       cacheAudioFiles,
       volume,
       crossfadeEnabled,
@@ -77,28 +54,22 @@ class MixtapeAudioHandler extends BaseAudioHandler
   MixtapeAudioHandler._(
     this._registry,
     this._player,
-    this.androidEqualizer,
-    this.androidLoudnessEnhancer,
     this._cacheAudioFiles,
     this._volume,
     bool crossfadeEnabled,
     int crossfadeDurationSeconds,
   ) {
-    // Use .listen() instead of .pipe() so we can also manually push
-    // PlaybackState updates (e.g. on track change) without hitting
-    // "Bad state: You cannot add items while items are being added".
-    _player.playbackEventStream.listen((event) {
-      playbackState.add(_transformEvent(event));
-      _log(
-        '[PLAYER] event state=${_player.processingState.name} '
-        'index=${event.currentIndex} '
-        'pos=${event.updatePosition.inMilliseconds}ms '
-        'buf=${event.bufferedPosition.inMilliseconds}ms '
-        'duration=${event.duration?.inMilliseconds ?? -1}ms',
-      );
+    // Push PlaybackState updates on every relevant state change.
+    _player.stream.playing.listen((_) => _broadcastPlaybackState());
+    _player.stream.position.listen((_) {}); // keep stream alive
+    _player.stream.buffering.listen((_) => _broadcastPlaybackState());
+
+    // Auto-advance when a track finishes.
+    _player.stream.completed.listen((completed) {
+      if (completed) _advance();
     });
-    unawaited(_player.setVolume(_volume.clamp(0.0, 1.0)));
-    _player.currentIndexStream.listen(_onIndexChanged);
+
+    unawaited(_player.setVolume((_volume * 100).clamp(0, 100)));
     unawaited(
       setCrossfade(
         enabled: crossfadeEnabled,
@@ -109,28 +80,32 @@ class MixtapeAudioHandler extends BaseAudioHandler
 
   Track? _currentTrack;
   List<Track> _trackQueue = [];
+  int _currentIndex = 0;
 
-  /// Underlying concat source - allows inserting/removing tracks without
-  /// rebuilding the entire playlist and interrupting playback.
-  // ignore: deprecated_member_use
-  ConcatenatingAudioSource? _concatSource;
+  // Loop / shuffle state (managed by us, not by media_kit).
+  LoopMode _loopMode = LoopMode.off;
+  bool _shuffleEnabled = false;
+  List<int>? _shuffleOrder;
 
-  /// Parallel list tracking which queue indices have been fully resolved.
-  List<bool> _resolved = [];
+  /// Pre-resolved sources keyed by queue index.
+  final Map<int, _ResolvedSource> _resolvedSources = {};
 
-  /// Indices currently being resolved (prevents duplicate resolution).
+  /// Indices currently being resolved (prevents duplicates).
   final Set<int> _resolvingIndices = {};
 
-  /// Incremented when the queue is replaced, so in-flight resolutions for
-  /// old queues know to discard their results.
+  /// Incremented when the queue is replaced so in‑flight resolutions for old
+  /// queues discard their results.
   int _queueGeneration = 0;
 
-  /// Tracks how many times each index has been retried after resolution failure.
+  /// Per-index retry counters for resolution failures.
   final Map<int, int> _resolveRetries = {};
   static const int _maxResolveRetries = 2;
 
   final _resolvingController = StreamController<bool>.broadcast();
   final _errorController = StreamController<String?>.broadcast();
+  final _trackChangeController = StreamController<int>.broadcast();
+
+  int? _lastNotifiedIndex;
 
   /// Emits `true` while the starting track is being resolved, `false` once done.
   Stream<bool> get resolvingStream => _resolvingController.stream;
@@ -138,9 +113,31 @@ class MixtapeAudioHandler extends BaseAudioHandler
   /// Emits user-friendly error messages when playback fails.
   Stream<String?> get errorStream => _errorController.stream;
 
+  /// Emits the new queue index on real track changes.
+  Stream<int> get trackChangeStream => _trackChangeController.stream;
+
+  // ── Streams consumed by player_service / app ──────────────────────────────
+
+  Stream<Duration> get positionStream => _player.stream.position;
+  Stream<Duration> get bufferedPositionStream => _player.stream.buffer;
+  Stream<Duration?> get durationStream =>
+      _player.stream.duration.map((d) => d == Duration.zero ? null : d);
+  Stream<bool> get playingStream => _player.stream.playing;
+
+  // ── State accessors ───────────────────────────────────────────────────────
+
   List<Track> get trackQueue => List.unmodifiable(_trackQueue);
   Track? get currentTrack => _currentTrack;
-  AudioPlayer get player => _player;
+  int? get currentIndex => _trackQueue.isEmpty ? null : _currentIndex;
+  Duration get position => _player.state.position;
+  Duration get bufferedPosition => _player.state.buffer;
+  Duration? get duration {
+    final d = _player.state.duration;
+    return d == Duration.zero ? null : d;
+  }
+
+  bool get playing => _player.state.playing;
+  double get speed => _player.state.rate;
   PluginRegistry get registry => _registry;
   double get currentVolume => _volume;
 
@@ -151,13 +148,13 @@ class MixtapeAudioHandler extends BaseAudioHandler
   Future<void> setVolume(double volume) async {
     _volume = volume.clamp(0.0, 1.0);
     if (_boundaryFadeTimer != null) return;
-    await _player.setVolume(_volume);
+    await _player.setVolume((_volume * 100).clamp(0, 100));
     _log('[PLAYER] volume set to ${(_volume * 100).round()}%');
   }
 
   Future<void> setPlaybackSpeed(double speed) async {
     final clamped = speed.clamp(0.25, 3.0);
-    await _player.setSpeed(clamped);
+    await _player.setRate(clamped);
     _log('[PLAYER] speed set to ${clamped}x');
   }
 
@@ -177,7 +174,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
       _boundaryFadeToken++;
       _boundaryFadeTimer?.cancel();
       _boundaryFadeTimer = null;
-      await _player.setVolume(_volume);
+      await _player.setVolume((_volume * 100).clamp(0, 100));
     }
 
     _log('[PLAYER] boundary-fade=${enabled ? 'on' : 'off'} ms=$ms');
@@ -185,7 +182,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
 
   Future<void> _applyBoundaryMicroFade() async {
     if (!_boundaryMicroFadeEnabled) return;
-    if (!_player.playing) return;
+    if (!_player.state.playing) return;
 
     _boundaryFadeToken++;
     final token = _boundaryFadeToken;
@@ -212,12 +209,12 @@ class MixtapeAudioHandler extends BaseAudioHandler
       step++;
       final t = (step / steps).clamp(0.0, 1.0);
       final eased = t * t * (3 - 2 * t);
-      _player.setVolume(_volume * eased);
+      _player.setVolume((_volume * eased * 100).clamp(0, 100));
 
       if (step >= steps) {
         timer.cancel();
         _boundaryFadeTimer = null;
-        _player.setVolume(_volume);
+        _player.setVolume((_volume * 100).clamp(0, 100));
       }
     });
   }
@@ -244,17 +241,24 @@ class MixtapeAudioHandler extends BaseAudioHandler
   }
 
   /// Resolves only the starting track immediately so playback begins fast,
-  /// then resolves the rest in the background via [_resolveAtIndex].
+  /// then pre-resolves adjacent tracks in the background.
   Future<void> _startQueue(
     List<Track> tracks, {
     required int startIndex,
   }) async {
     _trackQueue = tracks;
     _currentTrack = tracks[startIndex];
-    _resolved = List.filled(tracks.length, false);
+    _currentIndex = startIndex;
+    _lastNotifiedIndex = null;
+    _resolvedSources.clear();
     _resolvingIndices.clear();
     _resolveRetries.clear();
+    _shuffleOrder = null;
     final gen = ++_queueGeneration;
+
+    if (_shuffleEnabled) {
+      _buildShuffleOrder(startIndex);
+    }
 
     _setResolving(true);
     try {
@@ -262,25 +266,19 @@ class MixtapeAudioHandler extends BaseAudioHandler
         '[QUEUE] start gen=$gen size=${tracks.length} startIndex=$startIndex '
         'cache=$_cacheAudioFiles volume=${(_volume * 100).round()}%',
       );
-      final startSource = await _buildSource(
+      final resolved = await _resolveSource(
         tracks[startIndex],
       ).timeout(const Duration(seconds: 30));
-      _resolved[startIndex] = true;
+      _resolvedSources[startIndex] = resolved;
 
-      // Non-starting tracks use their raw URI as a placeholder; they'll be
-      // swapped to resolved sources by _resolveAtIndex before being played.
-      final sources = <AudioSource>[
-        for (int i = 0; i < tracks.length; i++)
-          i == startIndex ? startSource : _rawSource(tracks[i]),
-      ];
-
-      // ignore: deprecated_member_use
-      _concatSource = ConcatenatingAudioSource(children: sources);
-      await _player.setAudioSource(_concatSource!, initialIndex: startIndex);
-      _log('[QUEUE] setAudioSource ok, starting playback');
-      await _player.play();
-      _log('[QUEUE] play() invoked successfully');
+      await _player.open(
+        Media(resolved.uri, httpHeaders: resolved.headers),
+        play: true,
+      );
+      _log('[QUEUE] open + play ok');
       _broadcastMediaItem(tracks[startIndex]);
+      _broadcastPlaybackState();
+      _notifyTrackChange(startIndex);
     } on TimeoutException {
       _log('[QUEUE] start timed out while resolving first source');
       _setError('Loading timed out. Check your network connection.');
@@ -294,38 +292,167 @@ class MixtapeAudioHandler extends BaseAudioHandler
       _setResolving(false);
     }
 
-    // Pre-resolve the immediately adjacent tracks in the background.
-    unawaited(_resolveAtIndex(startIndex + 1, gen: gen));
-    unawaited(_resolveAtIndex(startIndex + 2, gen: gen));
-    if (startIndex > 0) unawaited(_resolveAtIndex(startIndex - 1, gen: gen));
+    // Pre-resolve adjacent tracks in the background.
+    unawaited(_preResolve(startIndex + 1, gen: gen));
+    unawaited(_preResolve(startIndex + 2, gen: gen));
+    if (startIndex > 0) unawaited(_preResolve(startIndex - 1, gen: gen));
+  }
+
+  /// Auto-advance to the next track when playback completes.
+  Future<void> _advance() async {
+    if (_trackQueue.isEmpty) return;
+
+    if (_loopMode == LoopMode.one) {
+      // Repeat the same track.
+      await _player.seek(Duration.zero);
+      await _player.play();
+      return;
+    }
+
+    final nextIndex = _nextIndex();
+    if (nextIndex == null) {
+      // End of queue, no repeat.
+      _log('[QUEUE] reached end of queue');
+      _broadcastPlaybackState();
+      return;
+    }
+
+    await _playIndex(nextIndex);
+  }
+
+  /// Returns the next queue index (accounting for shuffle), or null if at end
+  /// with loop off.
+  int? _nextIndex() {
+    if (_shuffleEnabled && _shuffleOrder != null) {
+      final shufflePos = _shuffleOrder!.indexOf(_currentIndex);
+      final nextShufflePos = shufflePos + 1;
+      if (nextShufflePos < _shuffleOrder!.length) {
+        return _shuffleOrder![nextShufflePos];
+      }
+      if (_loopMode == LoopMode.all) {
+        return _shuffleOrder![0];
+      }
+      return null;
+    }
+
+    final next = _currentIndex + 1;
+    if (next < _trackQueue.length) return next;
+    if (_loopMode == LoopMode.all) return 0;
+    return null;
+  }
+
+  /// Returns the previous queue index (accounting for shuffle), or null.
+  int? _previousIndex() {
+    if (_shuffleEnabled && _shuffleOrder != null) {
+      final shufflePos = _shuffleOrder!.indexOf(_currentIndex);
+      final prevShufflePos = shufflePos - 1;
+      if (prevShufflePos >= 0) {
+        return _shuffleOrder![prevShufflePos];
+      }
+      if (_loopMode == LoopMode.all) {
+        return _shuffleOrder![_shuffleOrder!.length - 1];
+      }
+      return null;
+    }
+
+    final prev = _currentIndex - 1;
+    if (prev >= 0) return prev;
+    if (_loopMode == LoopMode.all) return _trackQueue.length - 1;
+    return null;
+  }
+
+  /// Resolve, open, and play the track at [index].
+  Future<void> _playIndex(int index) async {
+    if (index < 0 || index >= _trackQueue.length) return;
+    _currentIndex = index;
+    _currentTrack = _trackQueue[index];
+
+    final gen = _queueGeneration;
+
+    try {
+      final resolved =
+          _resolvedSources[index] ??
+          await _resolveSource(
+            _trackQueue[index],
+          ).timeout(const Duration(seconds: 30));
+      if (gen != _queueGeneration) return; // queue replaced while resolving
+      _resolvedSources[index] = resolved;
+
+      await _player.open(
+        Media(resolved.uri, httpHeaders: resolved.headers),
+        play: true,
+      );
+      _broadcastMediaItem(_trackQueue[index]);
+      _broadcastPlaybackState();
+      _notifyTrackChange(index);
+
+      unawaited(_applyBoundaryMicroFade());
+
+      // Pre-resolve upcoming tracks.
+      unawaited(_preResolve(index + 1, gen: gen));
+      unawaited(_preResolve(index + 2, gen: gen));
+      unawaited(_preResolve(index + 3, gen: gen));
+    } on TimeoutException {
+      _log('[PLAY] timed out resolving index=$index');
+      _setError('Loading timed out. Check your network connection.');
+    } catch (e, st) {
+      _log('[PLAY] failed index=$index: $e');
+      _log('[PLAY] stack: $st');
+      _setError(_friendlyError(e));
+    }
+  }
+
+  void _notifyTrackChange(int index) {
+    if (index == _lastNotifiedIndex) return;
+    _lastNotifiedIndex = index;
+    _log(
+      '[INDEX] track change: index=$index title="${_trackQueue[index].title}"',
+    );
+    if (!_trackChangeController.isClosed) {
+      _trackChangeController.add(index);
+    }
+  }
+
+  void _buildShuffleOrder(int startIndex) {
+    final indices = List.generate(_trackQueue.length, (i) => i);
+    indices.remove(startIndex);
+    indices.shuffle();
+    _shuffleOrder = [startIndex, ...indices];
   }
 
   Future<void> addToQueue(Track track) async {
     _trackQueue.add(track);
-    _resolved.add(false);
-    final concat = _concatSource;
-    if (concat != null) {
-      final newIdx = _trackQueue.length - 1;
-      await concat.add(_rawSource(track));
-      unawaited(_resolveAtIndex(newIdx, gen: _queueGeneration));
+    if (_shuffleEnabled && _shuffleOrder != null) {
+      _shuffleOrder!.add(_trackQueue.length - 1);
     }
+    unawaited(_preResolve(_trackQueue.length - 1, gen: _queueGeneration));
   }
 
   Future<void> playNext(Track track) async {
-    final currentIdx = _player.currentIndex ?? 0;
-    final insertIdx = currentIdx + 1;
+    final insertIdx = _currentIndex + 1;
     _trackQueue.insert(insertIdx, track);
-    _resolved.insert(insertIdx, false);
-    final concat = _concatSource;
-    if (concat != null) {
-      await concat.insert(insertIdx, _rawSource(track));
-      unawaited(_resolveAtIndex(insertIdx, gen: _queueGeneration));
+    // Shift resolved sources for indices >= insertIdx.
+    final shifted = <int, _ResolvedSource>{};
+    for (final entry in _resolvedSources.entries) {
+      shifted[entry.key >= insertIdx ? entry.key + 1 : entry.key] = entry.value;
     }
+    _resolvedSources
+      ..clear()
+      ..addAll(shifted);
+    if (_shuffleEnabled && _shuffleOrder != null) {
+      // Adjust shuffle indices.
+      _shuffleOrder = _shuffleOrder!
+          .map((i) => i >= insertIdx ? i + 1 : i)
+          .toList();
+      final shufflePos = _shuffleOrder!.indexOf(_currentIndex);
+      _shuffleOrder!.insert(shufflePos + 1, insertIdx);
+    }
+    unawaited(_preResolve(insertIdx, gen: _queueGeneration));
   }
 
   Future<void> skipToIndex(int index) async {
     if (index < 0 || index >= _trackQueue.length) return;
-    await _player.seek(Duration.zero, index: index);
+    await _playIndex(index);
   }
 
   // ── AudioHandler overrides ──────────────────────────────────────────────────
@@ -344,10 +471,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> seek(Duration position) async {
-    // Clamp seek to the known safe range to prevent just_audio from hanging
-    // when seeking past the actual end of the stream.
-    final dur = _player.duration;
-    final clamped = dur != null && dur > Duration.zero
+    final dur = _player.state.duration;
+    final clamped = dur > Duration.zero
         ? Duration(
             milliseconds: position.inMilliseconds.clamp(0, dur.inMilliseconds),
           )
@@ -356,62 +481,64 @@ class MixtapeAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> skipToNext() => _player.seekToNext();
+  Future<void> skipToNext() async {
+    final next = _nextIndex();
+    if (next != null) await _playIndex(next);
+  }
 
   @override
-  Future<void> skipToPrevious() => _player.seekToPrevious();
+  Future<void> skipToPrevious() async {
+    // If more than 3 seconds in, restart the current track.
+    if (_player.state.position.inSeconds > 3) {
+      await _player.seek(Duration.zero);
+      return;
+    }
+    final prev = _previousIndex();
+    if (prev != null) await _playIndex(prev);
+  }
 
   @override
   Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
-    await _player.setShuffleModeEnabled(
-      shuffleMode != AudioServiceShuffleMode.none,
-    );
+    _shuffleEnabled = shuffleMode != AudioServiceShuffleMode.none;
+    if (_shuffleEnabled) {
+      _buildShuffleOrder(_currentIndex);
+    } else {
+      _shuffleOrder = null;
+    }
   }
 
   @override
   Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
-    final loopMode = switch (repeatMode) {
+    _loopMode = switch (repeatMode) {
       AudioServiceRepeatMode.one => LoopMode.one,
       AudioServiceRepeatMode.all => LoopMode.all,
       AudioServiceRepeatMode.none => LoopMode.off,
       AudioServiceRepeatMode.group => LoopMode.all,
     };
-    await _player.setLoopMode(loopMode);
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Resolution helpers ──────────────────────────────────────────────────────
 
-  /// Resolves track N in the background and replaces its placeholder in the
-  /// concat source.  Silently skips if already resolved or being resolved.
-  Future<void> _resolveAtIndex(int index, {required int gen}) async {
+  /// Pre-resolves the track at [index] and stores the result.
+  Future<void> _preResolve(int index, {required int gen}) async {
     if (index < 0 || index >= _trackQueue.length) return;
-    if (index < _resolved.length && _resolved[index]) return;
+    if (_resolvedSources.containsKey(index)) return;
     if (_resolvingIndices.contains(index)) return;
     _resolvingIndices.add(index);
     try {
       _log('[RESOLVE] begin index=$index gen=$gen');
-      final source = await _buildSource(
+      final resolved = await _resolveSource(
         _trackQueue[index],
       ).timeout(const Duration(seconds: 30));
-      // Discard if the queue was replaced while we were resolving.
       if (gen != _queueGeneration) {
-        _log(
-          '[RESOLVE] discard index=$index stale generation '
-          'resolvedGen=$gen currentGen=$_queueGeneration',
-        );
+        _log('[RESOLVE] discard stale gen=$gen current=$_queueGeneration');
         return;
       }
-      final concat = _concatSource;
-      if (concat != null && index < concat.length) {
-        await concat.removeAt(index);
-        await concat.insert(index, source);
-        if (index < _resolved.length) _resolved[index] = true;
-        _log('[RESOLVE] swapped index=$index into concat source');
-      }
+      _resolvedSources[index] = resolved;
+      _log('[RESOLVE] cached index=$index');
     } catch (e, st) {
       _log('[RESOLVE] failed index=$index: $e');
       _log('[RESOLVE] stack index=$index: $st');
-      // Retry resolution up to _maxResolveRetries times before giving up.
       final retries = _resolveRetries[index] ?? 0;
       if (retries < _maxResolveRetries && gen == _queueGeneration) {
         _resolveRetries[index] = retries + 1;
@@ -419,7 +546,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
         Future.delayed(Duration(milliseconds: 500 * (retries + 1)), () {
           if (gen == _queueGeneration) {
             _resolvingIndices.remove(index);
-            unawaited(_resolveAtIndex(index, gen: gen));
+            unawaited(_preResolve(index, gen: gen));
           }
         });
         return;
@@ -429,46 +556,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
     }
   }
 
-  /// Returns an [AudioSource] using the track's raw URI - no plugin resolution.
-  /// Used as a placeholder until [_resolveAtIndex] swaps it for the real stream.
-  AudioSource _rawSource(Track track) {
-    final uri = track.uri;
-    if (uri.startsWith('/')) return AudioSource.uri(Uri.parse('file://$uri'));
-    if (uri.startsWith('file://')) return AudioSource.uri(Uri.parse(uri));
-    return AudioSource.uri(Uri.parse(uri));
-  }
-
-  String _stableTrackKey(Track track) {
-    final stableTrackKey = track.id.isNotEmpty ? track.id : track.uri;
-    return '${track.sourcePluginId}:$stableTrackKey';
-  }
-
-  bool _isDurationClearlyMismatched(Duration a, Duration b) =>
-      dc.isDurationClearlyMismatched(a, b);
-
-  void _applyResolvedDurationHint(Track reference, Duration hintedDuration) {
-    if (hintedDuration <= Duration.zero) return;
-    final key = _stableTrackKey(reference);
-
-    for (var i = 0; i < _trackQueue.length; i++) {
-      final current = _trackQueue[i];
-      if (_stableTrackKey(current) != key) continue;
-
-      final existing = current.duration;
-      final shouldReplace =
-          existing == null ||
-          _isDurationClearlyMismatched(existing, hintedDuration);
-      if (!shouldReplace) continue;
-
-      final updated = current.copyWith(duration: hintedDuration);
-      _trackQueue[i] = updated;
-      if (_currentTrack == current) {
-        _currentTrack = updated;
-      }
-    }
-  }
-
-  Future<AudioSource> _buildSource(Track track) async {
+  /// Resolves a track into a playable URI + headers.
+  Future<_ResolvedSource> _resolveSource(Track track) async {
     final plugin = _registry[track.sourcePluginId];
     String resolvedUri = plugin != null
         ? await plugin.resolveStreamUrl(track.uri)
@@ -494,8 +583,6 @@ class MixtapeAudioHandler extends BaseAudioHandler
         }
       }
 
-      // A YouTube page URL is not a playable media stream. If it stayed as a
-      // page URL after stream resolvers, fail early with an actionable message.
       if (_isYouTubePageUrl(resolvedUri)) {
         throw Exception(
           'Cannot play YouTube page URL directly. '
@@ -505,42 +592,24 @@ class MixtapeAudioHandler extends BaseAudioHandler
     }
 
     _log('[BUILD] uri: $resolvedUri');
-    _log('[BUILD] headers: $headers'); // <-- are headers populated?
-    _log('[BUILD] isHttp: ${resolvedUri.startsWith('http')}');
+    _log('[BUILD] headers: $headers');
     _log(
       '[BUILD] track="${track.title}" plugin=${track.sourcePluginId} '
       'cache=$_cacheAudioFiles platform=${Platform.operatingSystem}',
     );
 
-    if (resolvedUri.startsWith('/')) {
-      return AudioSource.uri(Uri.parse('file://$resolvedUri'));
-    }
-    if (resolvedUri.startsWith('file://')) {
-      return AudioSource.uri(Uri.parse(resolvedUri));
-    }
-
+    // Check file-cache before using the network.
     final cacheKey = _stableTrackKey(track);
     if (_cacheAudioFiles && resolvedUri.startsWith('http')) {
       final cachedPath = await _audioFileCache.getCachedFilePath(cacheKey);
       if (cachedPath != null) {
         _log('[BUILD] source=file-cache path=$cachedPath key=$cacheKey');
-        return AudioSource.uri(Uri.file(cachedPath));
+        return _ResolvedSource(uri: 'file://$cachedPath', headers: const {});
       }
     }
 
-    var playbackUri = resolvedUri;
-    var playbackHeaders = headers;
-
-    // AVPlayer on macOS/iOS may ignore custom HTTP headers; route through a
-    // local proxy that injects them before forwarding to the real source.
-    if (headers.isNotEmpty && (Platform.isMacOS || Platform.isIOS)) {
-      playbackUri = await _proxy.serve(resolvedUri, headers);
-      playbackHeaders = const {};
-      _log('[BUILD] using proxy uri=$playbackUri');
-    }
-
     // Start a background cache write for future plays.
-    if (_cacheAudioFiles && playbackUri.startsWith('http')) {
+    if (_cacheAudioFiles && resolvedUri.startsWith('http')) {
       unawaited(
         _audioFileCache.cacheInBackground(
           cacheKey: cacheKey,
@@ -550,15 +619,45 @@ class MixtapeAudioHandler extends BaseAudioHandler
       );
     }
 
-    _log(
-      '[BUILD] source=AudioSource.uri uri=$playbackUri '
-      'headers=${playbackHeaders.keys.toList()}',
-    );
+    // Normalise local-file URIs.
+    if (resolvedUri.startsWith('/')) {
+      return _ResolvedSource(uri: 'file://$resolvedUri', headers: const {});
+    }
+    if (resolvedUri.startsWith('file://')) {
+      return _ResolvedSource(uri: resolvedUri, headers: const {});
+    }
 
-    return AudioSource.uri(
-      Uri.parse(playbackUri),
-      headers: playbackHeaders.isEmpty ? null : playbackHeaders,
-    );
+    return _ResolvedSource(uri: resolvedUri, headers: headers);
+  }
+
+  String _stableTrackKey(Track track) {
+    final stableKey = track.id.isNotEmpty ? track.id : track.uri;
+    return '${track.sourcePluginId}:$stableKey';
+  }
+
+  bool _isDurationClearlyMismatched(Duration a, Duration b) =>
+      dc.isDurationClearlyMismatched(a, b);
+
+  void _applyResolvedDurationHint(Track reference, Duration hintedDuration) {
+    if (hintedDuration <= Duration.zero) return;
+    final key = _stableTrackKey(reference);
+
+    for (var i = 0; i < _trackQueue.length; i++) {
+      final current = _trackQueue[i];
+      if (_stableTrackKey(current) != key) continue;
+
+      final existing = current.duration;
+      final shouldReplace =
+          existing == null ||
+          _isDurationClearlyMismatched(existing, hintedDuration);
+      if (!shouldReplace) continue;
+
+      final updated = current.copyWith(duration: hintedDuration);
+      _trackQueue[i] = updated;
+      if (_currentTrack == current) {
+        _currentTrack = updated;
+      }
+    }
   }
 
   String _friendlyError(Object e) {
@@ -591,24 +690,6 @@ class MixtapeAudioHandler extends BaseAudioHandler
       }
     }
     return false;
-  }
-
-  void _onIndexChanged(int? index) {
-    if (index != null && index < _trackQueue.length) {
-      _currentTrack = _trackQueue[index];
-      _broadcastMediaItem(_trackQueue[index]);
-
-      // Force a fresh PlaybackState so system media controls (macOS Control
-      // Center, MPRIS, etc.) immediately reflect the new track's position.
-      playbackState.add(_transformEvent(_player.playbackEvent));
-
-      unawaited(_applyBoundaryMicroFade());
-      // Eagerly resolve N+1, N+2, and N+3 so they're ready before the user reaches them.
-      final gen = _queueGeneration;
-      unawaited(_resolveAtIndex(index + 1, gen: gen));
-      unawaited(_resolveAtIndex(index + 2, gen: gen));
-      unawaited(_resolveAtIndex(index + 3, gen: gen));
-    }
   }
 
   void _broadcastMediaItem(Track track) {
@@ -645,34 +726,38 @@ class MixtapeAudioHandler extends BaseAudioHandler
     }
   }
 
-  PlaybackState _transformEvent(PlaybackEvent event) {
-    final playing = _player.playing;
-    final processingState = switch (_player.processingState) {
-      ProcessingState.idle => AudioProcessingState.idle,
-      ProcessingState.loading => AudioProcessingState.loading,
-      ProcessingState.buffering => AudioProcessingState.buffering,
-      ProcessingState.ready => AudioProcessingState.ready,
-      ProcessingState.completed => AudioProcessingState.completed,
-    };
-    return PlaybackState(
-      controls: [
-        MediaControl.skipToPrevious,
-        if (playing) MediaControl.pause else MediaControl.play,
-        MediaControl.stop,
-        MediaControl.skipToNext,
-      ],
-      systemActions: const {
-        MediaAction.seek,
-        MediaAction.seekForward,
-        MediaAction.seekBackward,
-      },
-      androidCompactActionIndices: const [0, 1, 3],
-      processingState: processingState,
-      playing: playing,
-      updatePosition: _player.position,
-      bufferedPosition: _player.bufferedPosition,
-      speed: _player.speed,
-      queueIndex: event.currentIndex,
+  void _broadcastPlaybackState() {
+    final isPlaying = _player.state.playing;
+    final isBuffering = _player.state.buffering;
+    final isCompleted = _player.state.completed;
+
+    final processingState = isBuffering
+        ? AudioProcessingState.buffering
+        : isCompleted
+        ? AudioProcessingState.completed
+        : AudioProcessingState.ready;
+
+    playbackState.add(
+      PlaybackState(
+        controls: [
+          MediaControl.skipToPrevious,
+          if (isPlaying) MediaControl.pause else MediaControl.play,
+          MediaControl.stop,
+          MediaControl.skipToNext,
+        ],
+        systemActions: const {
+          MediaAction.seek,
+          MediaAction.seekForward,
+          MediaAction.seekBackward,
+        },
+        androidCompactActionIndices: const [0, 1, 3],
+        processingState: processingState,
+        playing: isPlaying,
+        updatePosition: _player.state.position,
+        bufferedPosition: _player.state.buffer,
+        speed: _player.state.rate,
+        queueIndex: _currentIndex,
+      ),
     );
   }
 
@@ -681,7 +766,6 @@ class MixtapeAudioHandler extends BaseAudioHandler
     await stop();
   }
 
-  /// Called by Android Auto / MediaBrowserService to populate the media tree.
   @override
   Future<List<MediaItem>> getChildren(
     String parentMediaId, [
@@ -721,141 +805,15 @@ class MixtapeAudioHandler extends BaseAudioHandler
     _boundaryFadeTimer?.cancel();
     _boundaryFadeTimer = null;
     await _player.dispose();
-    await _proxy.close();
     await _resolvingController.close();
     await _errorController.close();
+    await _trackChangeController.close();
   }
 }
 
-/// Local HTTP proxy used to inject headers for platforms where AVPlayer does
-/// not reliably forward `AudioSource.uri(headers: ...)` values.
-class StreamProxy {
-  HttpServer? _server;
-  final Map<String, _ProxyTarget> _targets = {};
-  int _nextId = 0;
-
-  static const String _upstreamClosedMsg =
-      'Connection closed while receiving data';
-
-  Future<String> serve(String url, Map<String, String> headers) async {
-    await _ensureServer();
-    final id = (++_nextId).toString();
-    _targets[id] = _ProxyTarget(url: url, headers: Map.of(headers));
-    final local = 'http://127.0.0.1:${_server!.port}/stream/$id';
-    _log(
-      '[PROXY] register id=$id local=$local target=$url '
-      'headerKeys=${headers.keys.toList()}',
-    );
-    return local;
-  }
-
-  Future<void> _ensureServer() async {
-    if (_server != null) return;
-    _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    _log('[PROXY] server listening on 127.0.0.1:${_server!.port}');
-    _server!.listen(_handleRequest);
-  }
-
-  Future<void> _handleRequest(HttpRequest request) async {
-    final id =
-        request.uri.pathSegments.length >= 2 &&
-            request.uri.pathSegments.first == 'stream'
-        ? request.uri.pathSegments[1]
-        : null;
-    final target = id != null ? _targets[id] : null;
-    if (target == null) {
-      _log(
-        '[PROXY] miss path=${request.uri.path} '
-        'query=${request.uri.query}',
-      );
-      request.response.statusCode = HttpStatus.notFound;
-      await request.response.close();
-      return;
-    }
-
-    final range = request.headers.value(HttpHeaders.rangeHeader);
-    _log(
-      '[PROXY] incoming id=$id method=${request.method} '
-      'range=${range ?? '<none>'} ua=${request.headers.value('user-agent')}',
-    );
-
-    final client = HttpClient();
-    try {
-      final proxyRequest = await client.openUrl(
-        request.method,
-        Uri.parse(target.url),
-      );
-
-      target.headers.forEach(proxyRequest.headers.set);
-
-      // Forward range for seeking support.
-      if (range != null) {
-        proxyRequest.headers.set(HttpHeaders.rangeHeader, range);
-      }
-
-      final proxyResponse = await proxyRequest.close();
-      _log(
-        '[PROXY] upstream id=$id status=${proxyResponse.statusCode} '
-        'contentLength=${proxyResponse.contentLength} '
-        'acceptRanges=${proxyResponse.headers.value('accept-ranges')}',
-      );
-      request.response.statusCode = proxyResponse.statusCode;
-      proxyResponse.headers.forEach((name, values) {
-        try {
-          request.response.headers.set(name, values.join(','));
-        } catch (_) {
-          // Skip headers rejected by dart:io on the outbound side.
-        }
-      });
-      await proxyResponse.pipe(request.response);
-      _log('[PROXY] completed id=$id status=${request.response.statusCode}');
-    } catch (e, st) {
-      final expectedDisconnect = _isExpectedDisconnect(e);
-      if (expectedDisconnect) {
-        _log('[PROXY] stream closed id=$id (expected): $e');
-      } else {
-        _log('[PROXY] request failed id=$id: $e');
-        _log('[PROXY] stack id=$id: $st');
-      }
-      // If bytes were already forwarded, status mutation may fail.
-      if (!expectedDisconnect) {
-        try {
-          request.response.statusCode = HttpStatus.badGateway;
-        } catch (_) {}
-      }
-      try {
-        await request.response.close();
-      } catch (_) {
-        // Ignore close failures; the client may have already disconnected.
-      }
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  Future<void> close() async {
-    await _server?.close(force: true);
-    _server = null;
-    _targets.clear();
-  }
-
-  bool _isExpectedDisconnect(Object error) {
-    if (error is HttpException && error.message.contains(_upstreamClosedMsg)) {
-      return true;
-    }
-    if (error is SocketException) {
-      final msg = error.message.toLowerCase();
-      return msg.contains('broken pipe') ||
-          msg.contains('connection reset by peer') ||
-          msg.contains('connection closed');
-    }
-    return false;
-  }
-}
-
-class _ProxyTarget {
-  final String url;
+class _ResolvedSource {
+  final String uri;
   final Map<String, String> headers;
 
-  const _ProxyTarget({required this.url, required this.headers});
+  const _ResolvedSource({required this.uri, required this.headers});
 }
