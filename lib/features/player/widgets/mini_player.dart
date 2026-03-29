@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/audio/player_service.dart';
-import '../../../core/models/track.dart';
+import '../../../core/audio/duration_correction.dart' as dc;
 import '../../../core/settings/settings_provider.dart';
 import '../../../shared/widgets/cover_art.dart';
 
@@ -25,10 +25,14 @@ class MiniPlayer extends ConsumerWidget {
 
     final effectiveTotalDuration = position == null
         ? null
-        : _effectiveDuration(track, position.totalDuration);
+        : dc.effectiveDuration(track, position.totalDuration);
     final effectivePosition = position == null
         ? null
-        : _effectivePosition(track, position.position, position.totalDuration);
+        : dc.effectivePosition(
+            track,
+            position.position,
+            position.totalDuration,
+          );
 
     return GestureDetector(
       onTap: onTap,
@@ -148,72 +152,6 @@ class MiniPlayer extends ConsumerWidget {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
-  }
-
-  Duration _effectiveDuration(Track track, Duration runtimeDuration) {
-    final metadataDuration = track.duration;
-    if (metadataDuration == null || metadataDuration <= Duration.zero) {
-      return runtimeDuration;
-    }
-    if (runtimeDuration <= Duration.zero) {
-      return metadataDuration;
-    }
-
-    final isYouTube =
-        track.sourcePluginId == 'com.mixtape.youtube' ||
-        _isYouTubeUrl(track.uri);
-    if (!isYouTube) return runtimeDuration;
-
-    final runtimeMs = runtimeDuration.inMilliseconds;
-    final metadataMs = metadataDuration.inMilliseconds;
-    if (metadataMs <= 0) return runtimeDuration;
-
-    final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
-      return metadataDuration;
-    }
-    return runtimeDuration;
-  }
-
-  Duration _effectivePosition(
-    Track track,
-    Duration rawPosition,
-    Duration runtimeDuration,
-  ) {
-    final metadataDuration = track.duration;
-    if (metadataDuration == null || metadataDuration <= Duration.zero) {
-      return rawPosition;
-    }
-    if (runtimeDuration <= Duration.zero) return rawPosition;
-
-    // During crossfade/auto-advance handoff, runtime duration may briefly
-    // belong to the previous item. Avoid ratio-based scaling until position
-    // has moved past the startup window of the new item.
-    if (rawPosition < const Duration(seconds: 4)) return rawPosition;
-
-    final isYouTube =
-        track.sourcePluginId == 'com.mixtape.youtube' ||
-        _isYouTubeUrl(track.uri);
-    if (!isYouTube) return rawPosition;
-
-    final runtimeMs = runtimeDuration.inMilliseconds;
-    final metadataMs = metadataDuration.inMilliseconds;
-    if (metadataMs <= 0) return rawPosition;
-
-    final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
-      return Duration(
-        milliseconds: (rawPosition.inMilliseconds / ratio).round(),
-      );
-    }
-    return rawPosition;
-  }
-
-  bool _isYouTubeUrl(String uriText) {
-    final uri = Uri.tryParse(uriText);
-    if (uri == null || !uri.hasScheme) return false;
-    final host = uri.host.toLowerCase();
-    return host.contains('youtube.com') || host.endsWith('youtu.be');
   }
 
   void _showVolumeSheet(

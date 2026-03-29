@@ -12,6 +12,7 @@ import '../../core/plugins/ytdlp/ytdlp_plugin.dart';
 import '../../core/providers.dart';
 import '../../core/models/track.dart';
 import '../../core/audio/player_service.dart';
+import '../../core/audio/duration_correction.dart' as dc;
 import '../../core/database/daos/playlists_dao.dart';
 import '../../core/settings/settings_provider.dart';
 import '../../shared/widgets/cover_art.dart';
@@ -32,6 +33,7 @@ class NowPlayingScreen extends ConsumerWidget {
     final shuffle = ref.watch(shuffleProvider);
     final repeat = ref.watch(repeatModeProvider);
     final showLyrics = ref.watch(_showLyricsProvider);
+    final speed = ref.watch(playbackSpeedProvider);
 
     if (track == null) {
       return const Scaffold(body: Center(child: Text('Nothing playing')));
@@ -45,10 +47,14 @@ class NowPlayingScreen extends ConsumerWidget {
     final showVideo = settings.showYoutubeVideoInPlayer && videoId != null;
     final effectiveTotalDuration = position == null
         ? null
-        : _effectiveDuration(track, position.totalDuration);
+        : dc.effectiveDuration(track, position.totalDuration);
     final effectivePosition = position == null
         ? null
-        : _effectivePosition(track, position.position, position.totalDuration);
+        : dc.effectivePosition(
+            track,
+            position.position,
+            position.totalDuration,
+          );
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -60,6 +66,35 @@ class NowPlayingScreen extends ConsumerWidget {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          // Speed control chip
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _showSpeedPicker(context, ref, speed, playerService),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: speed != 1.0
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : Colors.transparent,
+                  border: Border.all(color: Colors.white30),
+                ),
+                child: Text(
+                  '${speed}x',
+                  style: TextStyle(
+                    color: speed != 1.0 ? Colors.white : Colors.white60,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ),
           IconButton(
             icon: Icon(
               Icons.lyrics_rounded,
@@ -232,20 +267,15 @@ class NowPlayingScreen extends ConsumerWidget {
                                 .toDouble()
                                 .clamp(1, double.infinity),
                             onChanged: (v) {
-                              // Scale the seek target back to the raw player
-                              // timeline when duration is doubled.
-                              final rawTotal = position.totalDuration;
-                              final effectiveMax =
-                                  effectiveTotalDuration.inMilliseconds;
-                              final rawMax = rawTotal.inMilliseconds.clamp(
-                                1,
-                                1 << 53,
+                              final targetPos = Duration(
+                                milliseconds: v.round(),
                               );
-                              final scaledMs = (v * rawMax / effectiveMax)
-                                  .round();
-                              playerService.seekTo(
-                                Duration(milliseconds: scaledMs),
+                              final rawTarget = dc.rawSeekPosition(
+                                track,
+                                targetPos,
+                                position.totalDuration,
                               );
+                              playerService.seekTo(rawTarget);
                             },
                           ),
                         ),
@@ -438,75 +468,6 @@ class NowPlayingScreen extends ConsumerWidget {
     return '$minutes:$seconds';
   }
 
-  Duration _effectiveDuration(Track track, Duration runtimeDuration) {
-    final metadataDuration = track.duration;
-    if (metadataDuration == null || metadataDuration <= Duration.zero) {
-      return runtimeDuration;
-    }
-    if (runtimeDuration <= Duration.zero) {
-      return metadataDuration;
-    }
-
-    final isYouTube =
-        track.sourcePluginId == 'com.mixtape.youtube' ||
-        _isYouTubeUrl(track.uri);
-    if (!isYouTube) return runtimeDuration;
-
-    final runtimeMs = runtimeDuration.inMilliseconds;
-    final metadataMs = metadataDuration.inMilliseconds;
-    if (metadataMs <= 0) return runtimeDuration;
-
-    final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
-      return metadataDuration;
-    }
-    return runtimeDuration;
-  }
-
-  /// Scales the raw just_audio position down when the container reports a
-  /// doubled duration (common with certain YouTube-resolved m4a streams).
-  Duration _effectivePosition(
-    Track track,
-    Duration rawPosition,
-    Duration runtimeDuration,
-  ) {
-    final metadataDuration = track.duration;
-    if (metadataDuration == null || metadataDuration <= Duration.zero) {
-      return rawPosition;
-    }
-    if (runtimeDuration <= Duration.zero) return rawPosition;
-
-    // During crossfade/auto-advance handoff, runtime duration may briefly
-    // belong to the previous item. Avoid ratio-based scaling until position
-    // has moved past the startup window of the new item.
-    if (rawPosition < const Duration(seconds: 4)) return rawPosition;
-
-    final isYouTube =
-        track.sourcePluginId == 'com.mixtape.youtube' ||
-        _isYouTubeUrl(track.uri);
-    if (!isYouTube) return rawPosition;
-
-    final runtimeMs = runtimeDuration.inMilliseconds;
-    final metadataMs = metadataDuration.inMilliseconds;
-    if (metadataMs <= 0) return rawPosition;
-
-    final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
-      // Scale position by the same ratio so it tracks the corrected timeline.
-      return Duration(
-        milliseconds: (rawPosition.inMilliseconds / ratio).round(),
-      );
-    }
-    return rawPosition;
-  }
-
-  bool _isYouTubeUrl(String uriText) {
-    final uri = Uri.tryParse(uriText);
-    if (uri == null || !uri.hasScheme) return false;
-    final host = uri.host.toLowerCase();
-    return host.contains('youtube.com') || host.endsWith('youtu.be');
-  }
-
   Widget _transportCircle(
     BuildContext context, {
     required IconData icon,
@@ -541,6 +502,53 @@ class NowPlayingScreen extends ConsumerWidget {
         iconSize: iconSize,
         icon: Icon(icon, color: useArtwork ? Colors.white : Colors.black),
         onPressed: onPressed,
+      ),
+    );
+  }
+
+  void _showSpeedPicker(
+    BuildContext context,
+    WidgetRef ref,
+    double currentSpeed,
+    PlayerService playerService,
+  ) {
+    const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Playback Speed',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            ...speeds.map(
+              (s) => ListTile(
+                title: Text('${s}x'),
+                trailing: s == currentSpeed
+                    ? Icon(
+                        Icons.check_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
+                    : null,
+                selected: s == currentSpeed,
+                onTap: () {
+                  playerService.setPlaybackSpeed(s);
+                  Navigator.pop(context);
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }

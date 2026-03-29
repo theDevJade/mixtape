@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'audio_file_cache.dart';
+import 'duration_correction.dart' as dc;
 import '../models/track.dart';
 import '../plugins/plugin_registry.dart';
 import '../plugins/source_plugin.dart';
@@ -121,6 +122,10 @@ class MixtapeAudioHandler extends BaseAudioHandler
   /// old queues know to discard their results.
   int _queueGeneration = 0;
 
+  /// Tracks how many times each index has been retried after resolution failure.
+  final Map<int, int> _resolveRetries = {};
+  static const int _maxResolveRetries = 2;
+
   final _resolvingController = StreamController<bool>.broadcast();
   final _errorController = StreamController<String?>.broadcast();
 
@@ -134,6 +139,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
   Track? get currentTrack => _currentTrack;
   AudioPlayer get player => _player;
   PluginRegistry get registry => _registry;
+  double get currentVolume => _volume;
 
   void setCacheAudioFiles(bool enabled) {
     _cacheAudioFiles = enabled;
@@ -144,6 +150,12 @@ class MixtapeAudioHandler extends BaseAudioHandler
     if (_boundaryFadeTimer != null) return;
     await _player.setVolume(_volume);
     _log('[PLAYER] volume set to ${(_volume * 100).round()}%');
+  }
+
+  Future<void> setPlaybackSpeed(double speed) async {
+    final clamped = speed.clamp(0.25, 3.0);
+    await _player.setSpeed(clamped);
+    _log('[PLAYER] speed set to ${clamped}x');
   }
 
   Future<void> setCrossfade({
@@ -238,6 +250,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
     _currentTrack = tracks[startIndex];
     _resolved = List.filled(tracks.length, false);
     _resolvingIndices.clear();
+    _resolveRetries.clear();
     final gen = ++_queueGeneration;
 
     _setResolving(true);
@@ -327,7 +340,17 @@ class MixtapeAudioHandler extends BaseAudioHandler
   }
 
   @override
-  Future<void> seek(Duration position) => _player.seek(position);
+  Future<void> seek(Duration position) async {
+    // Clamp seek to the known safe range to prevent just_audio from hanging
+    // when seeking past the actual end of the stream.
+    final dur = _player.duration;
+    final clamped = dur != null && dur > Duration.zero
+        ? Duration(
+            milliseconds: position.inMilliseconds.clamp(0, dur.inMilliseconds),
+          )
+        : position;
+    await _player.seek(clamped);
+  }
 
   @override
   Future<void> skipToNext() => _player.seekToNext();
@@ -385,7 +408,19 @@ class MixtapeAudioHandler extends BaseAudioHandler
     } catch (e, st) {
       _log('[RESOLVE] failed index=$index: $e');
       _log('[RESOLVE] stack index=$index: $st');
-      // Resolution failed; the track will surface an error when played.
+      // Retry resolution up to _maxResolveRetries times before giving up.
+      final retries = _resolveRetries[index] ?? 0;
+      if (retries < _maxResolveRetries && gen == _queueGeneration) {
+        _resolveRetries[index] = retries + 1;
+        _log('[RESOLVE] scheduling retry ${retries + 1} for index=$index');
+        Future.delayed(Duration(milliseconds: 500 * (retries + 1)), () {
+          if (gen == _queueGeneration) {
+            _resolvingIndices.remove(index);
+            unawaited(_resolveAtIndex(index, gen: gen));
+          }
+        });
+        return;
+      }
     } finally {
       _resolvingIndices.remove(index);
     }
@@ -405,14 +440,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
     return '${track.sourcePluginId}:$stableTrackKey';
   }
 
-  bool _isDurationClearlyMismatched(Duration a, Duration b) {
-    if (a <= Duration.zero || b <= Duration.zero) return false;
-    final aMs = a.inMilliseconds;
-    final bMs = b.inMilliseconds;
-    if (aMs <= 0 || bMs <= 0) return false;
-    final ratio = aMs / bMs;
-    return ratio >= 1.8 || ratio <= (1 / 1.8);
-  }
+  bool _isDurationClearlyMismatched(Duration a, Duration b) =>
+      dc.isDurationClearlyMismatched(a, b);
 
   void _applyResolvedDurationHint(Track reference, Duration hintedDuration) {
     if (hintedDuration <= Duration.zero) return;

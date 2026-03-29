@@ -61,6 +61,8 @@ final currentIndexProvider = StreamProvider<int?>((ref) {
   return ref.watch(audioHandlerProvider).player.currentIndexStream;
 });
 
+final playbackSpeedProvider = StateProvider<double>((ref) => 1.0);
+
 /// `true` while the starting track of a new play request is being resolved.
 final isResolvingProvider = StreamProvider<bool>((ref) {
   return ref.watch(audioHandlerProvider).resolvingStream;
@@ -117,6 +119,11 @@ class PlayerService {
   }
 
   Future<void> skipToIndex(int index) => _handler.skipToIndex(index);
+
+  Future<void> setPlaybackSpeed(double speed) async {
+    _ref.read(playbackSpeedProvider.notifier).state = speed;
+    await _handler.setPlaybackSpeed(speed);
+  }
 
   Future<void> toggleShuffle() async {
     final current = _ref.read(shuffleProvider);

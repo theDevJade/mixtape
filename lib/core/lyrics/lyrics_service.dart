@@ -64,8 +64,8 @@ class LyricsService {
     try {
       final params = <String, dynamic>{
         'track_name': cleanTitle,
-        if (cleanArtist != null) 'artist_name': cleanArtist,
-        if (album != null) 'album_name': album,
+        'artist_name': ?cleanArtist,
+        'album_name': ?album,
         if (track.duration != null) 'duration': track.duration!.inSeconds,
       };
 
@@ -137,7 +137,7 @@ class LyricsService {
     try {
       final params = <String, dynamic>{
         'track_name': trackName,
-        if (artistName != null) 'artist_name': artistName,
+        'artist_name': ?artistName,
       };
 
       final resp = await _dio.get('/search', queryParameters: params);
