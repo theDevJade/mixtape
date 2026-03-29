@@ -56,57 +56,35 @@ Duration effectiveDuration(Track track, Duration runtimeDuration) {
   return runtimeDuration;
 }
 
-/// Scales the raw player position to the corrected timeline when the
-/// container reports a doubled duration.
+/// Returns the raw player position, clamped to the effective duration so
+/// the slider never overshoots.
 ///
-/// During the first 4 seconds of a new track (startup window) the raw
-/// position is returned as-is to avoid jitter from cross-fade handoff.
+/// Previous versions tried to *scale* the position when a YouTube container
+/// reported a doubled duration.  In practice the audio plays at 1x and
+/// just_audio's position is already correct — only the container's
+/// *duration* is wrong.  Scaling caused the slider to sit at ~50 % when the
+/// stream naturally ended, making it look like the song finished early.
 Duration effectivePosition(
   Track track,
   Duration rawPosition,
   Duration runtimeDuration,
 ) {
-  final metadataDuration = track.duration;
-  if (metadataDuration == null || metadataDuration <= Duration.zero) {
-    return rawPosition;
-  }
-  if (runtimeDuration <= Duration.zero) return rawPosition;
-  if (rawPosition < const Duration(seconds: 4)) return rawPosition;
-  if (!_isYouTubeTrack(track)) return rawPosition;
-
-  final runtimeMs = runtimeDuration.inMilliseconds;
-  final metadataMs = metadataDuration.inMilliseconds;
-  if (metadataMs <= 0) return rawPosition;
-
-  final ratio = runtimeMs / metadataMs;
-  if (ratio >= _mismatchRatio || ratio <= (1 / _mismatchRatio)) {
-    return Duration(milliseconds: (rawPosition.inMilliseconds / ratio).round());
-  }
+  final eff = effectiveDuration(track, runtimeDuration);
+  if (rawPosition > eff && eff > Duration.zero) return eff;
   return rawPosition;
 }
 
-/// Converts a target seek position (in the corrected timeline) back to the
-/// raw player timeline, if duration scaling is active.
+/// Converts a target seek position back to the raw player timeline.
+///
+/// Because we no longer scale position, this is just a clamp to the
+/// player's actual duration so we never seek past the stream end.
 Duration rawSeekPosition(
   Track track,
   Duration targetPosition,
   Duration runtimeDuration,
 ) {
-  final metadataDuration = track.duration;
-  if (metadataDuration == null || metadataDuration <= Duration.zero) {
-    return targetPosition;
-  }
-  if (runtimeDuration <= Duration.zero) return targetPosition;
-  if (!_isYouTubeTrack(track)) return targetPosition;
-
-  final runtimeMs = runtimeDuration.inMilliseconds;
-  final metadataMs = metadataDuration.inMilliseconds;
-  if (metadataMs <= 0) return targetPosition;
-
-  final ratio = runtimeMs / metadataMs;
-  if (ratio >= _mismatchRatio || ratio <= (1 / _mismatchRatio)) {
-    final rawMs = (targetPosition.inMilliseconds * ratio).round();
-    return Duration(milliseconds: rawMs.clamp(0, runtimeMs));
+  if (runtimeDuration > Duration.zero && targetPosition > runtimeDuration) {
+    return runtimeDuration;
   }
   return targetPosition;
 }

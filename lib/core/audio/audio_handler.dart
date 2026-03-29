@@ -594,6 +594,11 @@ class MixtapeAudioHandler extends BaseAudioHandler
     if (index != null && index < _trackQueue.length) {
       _currentTrack = _trackQueue[index];
       _broadcastMediaItem(_trackQueue[index]);
+
+      // Force a fresh PlaybackState so system media controls (macOS Control
+      // Center, MPRIS, etc.) immediately reflect the new track's position.
+      playbackState.add(_transformEvent(_player.playbackEvent));
+
       unawaited(_applyBoundaryMicroFade());
       // Eagerly resolve N+1, N+2, and N+3 so they're ready before the user reaches them.
       final gen = _queueGeneration;

@@ -66,16 +66,36 @@ class _AppRoot extends ConsumerStatefulWidget {
   ConsumerState<_AppRoot> createState() => _AppRootState();
 }
 
-class _AppRootState extends ConsumerState<_AppRoot> {
+class _AppRootState extends ConsumerState<_AppRoot>
+    with WidgetsBindingObserver {
   int? _lastPresenceBucket;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Kick off initial connection attempt after first frame.
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _updateDiscordPresence(),
     );
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // When the window regains focus (macOS, Linux, Windows) the position
+    // StreamProvider may have stale UI because Flutter throttles frame
+    // scheduling for unfocused windows.  Invalidating forces a fresh
+    // subscription that immediately emits the current player state.
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(positionDataProvider);
+    }
   }
 
   Future<void> _updateDiscordPresence() async {

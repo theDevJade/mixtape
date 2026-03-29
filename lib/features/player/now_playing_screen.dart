@@ -515,6 +515,9 @@ class NowPlayingScreen extends ConsumerWidget {
     const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
     showModalBottomSheet(
       context: context,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.5,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -530,20 +533,27 @@ class NowPlayingScreen extends ConsumerWidget {
               ),
             ),
             const Divider(height: 1),
-            ...speeds.map(
-              (s) => ListTile(
-                title: Text('${s}x'),
-                trailing: s == currentSpeed
-                    ? Icon(
-                        Icons.check_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                      )
-                    : null,
-                selected: s == currentSpeed,
-                onTap: () {
-                  playerService.setPlaybackSpeed(s);
-                  Navigator.pop(context);
-                },
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                children: speeds
+                    .map(
+                      (s) => ListTile(
+                        title: Text('${s}x'),
+                        trailing: s == currentSpeed
+                            ? Icon(
+                                Icons.check_rounded,
+                                color: Theme.of(context).colorScheme.primary,
+                              )
+                            : null,
+                        selected: s == currentSpeed,
+                        onTap: () {
+                          playerService.setPlaybackSpeed(s);
+                          Navigator.pop(context);
+                        },
+                      ),
+                    )
+                    .toList(),
               ),
             ),
             const SizedBox(height: 8),
