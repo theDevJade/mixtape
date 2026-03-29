@@ -11,6 +11,7 @@ class YtDlpPlugin extends MixtapeSourcePlugin {
   bool _acknowledged = false;
 
   final Map<String, Map<String, String>> _headerCache = {};
+  final Map<String, double?> _durationCache = {};
 
   @override
   String get id => 'com.mixtape.ytdlp';
@@ -159,15 +160,25 @@ class YtDlpPlugin extends MixtapeSourcePlugin {
 
     final rawHeaders = json['http_headers'] as Map<String, dynamic>? ?? {};
     _headerCache[uri] = rawHeaders.cast<String, String>();
+    _durationCache[uri] = (json['duration'] as num?)?.toDouble();
 
     return url;
   }
 
+  @override
+  Duration? resolvedDuration(String uri) {
+    final secs = _durationCache[uri];
+    if (secs == null || secs <= 0) return null;
+    return Duration(milliseconds: (secs * 1000).round());
+  }
+
   String _formatSelectorForPlatform() {
+    // AVFoundation does not reliably support Ogg playback. Prefer Apple-native
+    // containers there; use Ogg/Opus preference on other platforms.
     if (Platform.isMacOS || Platform.isIOS) {
       return 'bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[acodec*=aac]/bestaudio/best';
     }
-    return 'bestaudio[ext=webm]/bestaudio/best';
+    return 'bestaudio[ext=ogg][acodec=opus]/bestaudio[acodec=opus][ext=ogg]/bestaudio[acodec=opus]/bestaudio[ext=m4a]/bestaudio[ext=mp4]/bestaudio[acodec*=aac]/bestaudio/best';
   }
 
   @override
@@ -257,5 +268,8 @@ class YtDlpPlugin extends MixtapeSourcePlugin {
   bool get isAcknowledged => _acknowledged;
 
   @override
-  Future<void> dispose() async => _headerCache.clear();
+  Future<void> dispose() async {
+    _headerCache.clear();
+    _durationCache.clear();
+  }
 }

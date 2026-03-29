@@ -169,7 +169,7 @@ class MiniPlayer extends ConsumerWidget {
     if (metadataMs <= 0) return runtimeDuration;
 
     final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.5 || ratio <= 0.67) {
+    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
       return metadataDuration;
     }
     return runtimeDuration;
@@ -186,6 +186,11 @@ class MiniPlayer extends ConsumerWidget {
     }
     if (runtimeDuration <= Duration.zero) return rawPosition;
 
+    // During crossfade/auto-advance handoff, runtime duration may briefly
+    // belong to the previous item. Avoid ratio-based scaling until position
+    // has moved past the startup window of the new item.
+    if (rawPosition < const Duration(seconds: 4)) return rawPosition;
+
     final isYouTube =
         track.sourcePluginId == 'com.mixtape.youtube' ||
         _isYouTubeUrl(track.uri);
@@ -196,7 +201,7 @@ class MiniPlayer extends ConsumerWidget {
     if (metadataMs <= 0) return rawPosition;
 
     final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.5 || ratio <= 0.67) {
+    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
       return Duration(
         milliseconds: (rawPosition.inMilliseconds / ratio).round(),
       );

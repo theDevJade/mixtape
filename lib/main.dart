@@ -85,12 +85,16 @@ Future<void> main() async {
   final initialVolume = (prefs.getDouble('volume') ?? 1.0)
       .clamp(0.0, 1.0)
       .toDouble();
+  final initialCrossfadeEnabled = prefs.getBool('crossfade_enabled') ?? false;
+  final initialCrossfadeSeconds = prefs.getInt('crossfade_duration') ?? 0;
 
   final audioHandler = await AudioService.init(
     builder: () => MixtapeAudioHandler(
       registry,
       cacheAudioFiles: cacheAudioFiles,
       volume: initialVolume,
+      crossfadeEnabled: initialCrossfadeEnabled,
+      crossfadeDurationSeconds: initialCrossfadeSeconds,
     ),
     config: const AudioServiceConfig(
       androidNotificationChannelId: 'com.mixtape.audio',

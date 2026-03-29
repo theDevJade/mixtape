@@ -89,6 +89,10 @@ abstract class MixtapeSourcePlugin {
   Future<Map<String, String>> resolveStreamHeaders(String uri) async =>
       const {};
 
+  /// Returns a known duration for the URI resolved by [resolveStreamUrl], if
+  /// the resolver has one (e.g. yt-dlp --dump-json duration).
+  Duration? resolvedDuration(String uri) => null;
+
   /// Search for tracks - plugins that don't support search throw UnimplementedError
   Future<List<SourceResult>> search(String query) async {
     throw UnimplementedError('$name does not support search');

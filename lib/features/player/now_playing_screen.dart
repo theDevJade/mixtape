@@ -457,7 +457,7 @@ class NowPlayingScreen extends ConsumerWidget {
     if (metadataMs <= 0) return runtimeDuration;
 
     final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.5 || ratio <= 0.67) {
+    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
       return metadataDuration;
     }
     return runtimeDuration;
@@ -476,6 +476,11 @@ class NowPlayingScreen extends ConsumerWidget {
     }
     if (runtimeDuration <= Duration.zero) return rawPosition;
 
+    // During crossfade/auto-advance handoff, runtime duration may briefly
+    // belong to the previous item. Avoid ratio-based scaling until position
+    // has moved past the startup window of the new item.
+    if (rawPosition < const Duration(seconds: 4)) return rawPosition;
+
     final isYouTube =
         track.sourcePluginId == 'com.mixtape.youtube' ||
         _isYouTubeUrl(track.uri);
@@ -486,7 +491,7 @@ class NowPlayingScreen extends ConsumerWidget {
     if (metadataMs <= 0) return rawPosition;
 
     final ratio = runtimeMs / metadataMs;
-    if (ratio >= 1.5 || ratio <= 0.67) {
+    if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
       // Scale position by the same ratio so it tracks the corrected timeline.
       return Duration(
         milliseconds: (rawPosition.inMilliseconds / ratio).round(),
@@ -908,6 +913,8 @@ class _YouTubeVideoEmbedState extends ConsumerState<_YouTubeVideoEmbed> {
   String? _downloadedPreviewPath;
   bool _loadFailed = false;
   bool _loading = true;
+  DateTime? _lastSeekAt;
+  bool _syncInFlight = false;
 
   Uri get _watchUrl =>
       Uri.parse('https://www.youtube.com/watch?v=${widget.videoId}');
@@ -1002,30 +1009,51 @@ class _YouTubeVideoEmbedState extends ConsumerState<_YouTubeVideoEmbed> {
   }
 
   Future<void> _syncVideoToAudio({required bool force}) async {
-    final controller = _controller;
-    if (controller == null || !controller.value.isInitialized) return;
+    if (_syncInFlight) return;
+    _syncInFlight = true;
+    try {
+      final controller = _controller;
+      if (controller == null || !controller.value.isInitialized) return;
 
-    final duration = controller.value.duration;
-    if (duration <= Duration.zero) return;
+      final duration = controller.value.duration;
+      if (duration <= Duration.zero) return;
 
-    final targetMs = widget.audioPosition.inMilliseconds
-        .clamp(0, duration.inMilliseconds)
-        .toInt();
-    final currentMs = controller.value.position.inMilliseconds;
-    final driftMs = (currentMs - targetMs).abs();
+      final targetMs = widget.audioPosition.inMilliseconds
+          .clamp(0, duration.inMilliseconds)
+          .toInt();
+      final currentMs = controller.value.position.inMilliseconds;
+      final driftMs = (currentMs - targetMs).abs();
 
-    if (force || driftMs > 1500) {
-      await controller.seekTo(Duration(milliseconds: targetMs));
-    }
+      final elapsedMs = widget.audioPosition.inMilliseconds;
+      final startupWindow = elapsedMs < 4000;
+      final beyondPreview = elapsedMs > duration.inMilliseconds + 2000;
+      final recentSeek =
+          _lastSeekAt != null &&
+          DateTime.now().difference(_lastSeekAt!) <
+              const Duration(milliseconds: 1200);
 
-    if (widget.audioPlaying) {
-      if (!controller.value.isPlaying) {
-        await controller.play();
+      // During track handoff (crossfade / auto-advance), avoid aggressive
+      // seeking while the audio timeline settles for the newly selected item.
+      final shouldSeek =
+          force ||
+          (!startupWindow && !beyondPreview && !recentSeek && driftMs > 1500);
+
+      if (shouldSeek) {
+        await controller.seekTo(Duration(milliseconds: targetMs));
+        _lastSeekAt = DateTime.now();
       }
-    } else {
-      if (controller.value.isPlaying) {
-        await controller.pause();
+
+      if (widget.audioPlaying) {
+        if (!controller.value.isPlaying) {
+          await controller.play();
+        }
+      } else {
+        if (controller.value.isPlaying) {
+          await controller.pause();
+        }
       }
+    } finally {
+      _syncInFlight = false;
     }
   }
 

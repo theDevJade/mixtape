@@ -301,8 +301,9 @@ Duration _correctPosition(
   if (metadataMs <= 0) return rawPosition;
   final runtimeMs = runtimeDuration.inMilliseconds;
   if (runtimeMs <= 0) return rawPosition;
+  if (rawPosition < const Duration(seconds: 4)) return rawPosition;
   final ratio = runtimeMs / metadataMs;
-  if (ratio >= 1.5 || ratio <= 0.67) {
+  if (ratio >= 1.8 || ratio <= (1 / 1.8)) {
     return Duration(milliseconds: (rawPosition.inMilliseconds / ratio).round());
   }
   return rawPosition;

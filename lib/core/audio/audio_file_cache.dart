@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:opus_caf_converter_dart/opus_caf_converter_dart.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -70,7 +71,7 @@ class AudioFileCache {
       'audio/flac' || 'audio/x-flac' => '.flac',
       'audio/aac' || 'audio/x-aac' => '.aac',
       'audio/wav' || 'audio/x-wav' => '.wav',
-      'audio/opus' => '.opus',
+      'audio/opus' => '.ogg',
       _ => null,
     };
   }
@@ -85,7 +86,9 @@ class AudioFileCache {
       if (ext != null) return ext;
     }
     final pathExt = p.extension(uri.path);
-    return (pathExt.isNotEmpty && pathExt.length <= 8) ? pathExt : null;
+    if (pathExt.isEmpty || pathExt.length > 8) return null;
+    if (pathExt.toLowerCase() == '.opus') return '.ogg';
+    return pathExt;
   }
 
   int? _expectedBytesFromUri(Uri uri) {
@@ -96,6 +99,41 @@ class AudioFileCache {
       if (parsed != null && parsed > 0) return parsed;
     }
     return null;
+  }
+
+  bool get _isApplePlatform => Platform.isMacOS || Platform.isIOS;
+
+  Future<File?> _maybeConvertOpusToCaf(File input, String sourceExt) async {
+    if (!_isApplePlatform) return null;
+    final ext = sourceExt.toLowerCase();
+    if (ext != '.ogg' && ext != '.opus') return null;
+
+    final outputPath = p.setExtension(input.path, '.caf');
+    final output = File(outputPath);
+
+    try {
+      if (await output.exists()) {
+        await output.delete();
+      }
+
+      final converter = OpusCaf();
+      converter.convertOpusToCaf(input.path, output.path);
+
+      if (!await output.exists()) return null;
+      final outStat = await output.stat();
+      if (outStat.size <= 0) {
+        await output.delete();
+        return null;
+      }
+
+      await input.delete();
+      return output;
+    } catch (_) {
+      if (await output.exists()) {
+        await output.delete();
+      }
+      return null;
+    }
   }
 
   Future<bool> _promoteTempToCache({
@@ -223,9 +261,6 @@ class AudioFileCache {
           return;
         }
 
-        final fileName = '$hash$ext';
-        final target = File(p.join(dir.path, fileName));
-
         final expectedBytes = response.contentLength > 0
             ? response.contentLength
             : _expectedBytesFromUri(uri);
@@ -238,11 +273,18 @@ class AudioFileCache {
           await sink.close();
         }
 
+        final converted = await _maybeConvertOpusToCaf(temp, ext);
+        final finalTemp = converted ?? temp;
+        final finalExt = converted != null ? '.caf' : ext;
+
+        final fileName = '$hash$finalExt';
+        final target = File(p.join(dir.path, fileName));
+
         await _promoteTempToCache(
           cacheKey: cacheKey,
           sourceUri: sourceUri,
           fileName: fileName,
-          temp: temp,
+          temp: finalTemp,
           target: target,
           expectedBytes: expectedBytes,
           allowUnknownExpected: true,

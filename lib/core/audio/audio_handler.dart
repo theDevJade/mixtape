@@ -26,6 +26,10 @@ class MixtapeAudioHandler extends BaseAudioHandler
   final StreamProxy _proxy = StreamProxy();
   bool _cacheAudioFiles;
   double _volume;
+  bool _boundaryMicroFadeEnabled = false;
+  Duration _boundaryMicroFadeDuration = const Duration(milliseconds: 180);
+  Timer? _boundaryFadeTimer;
+  int _boundaryFadeToken = 0;
 
   /// Non-null on Android only.
   final AndroidEqualizer? androidEqualizer;
@@ -37,6 +41,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
     PluginRegistry registry, {
     bool cacheAudioFiles = false,
     double volume = 1.0,
+    bool crossfadeEnabled = false,
+    int crossfadeDurationSeconds = 0,
   }) {
     if (Platform.isAndroid) {
       final eq = AndroidEqualizer();
@@ -51,6 +57,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
         loudness,
         cacheAudioFiles,
         volume,
+        crossfadeEnabled,
+        crossfadeDurationSeconds,
       );
     }
     return MixtapeAudioHandler._(
@@ -60,6 +68,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
       null,
       cacheAudioFiles,
       volume,
+      crossfadeEnabled,
+      crossfadeDurationSeconds,
     );
   }
 
@@ -70,6 +80,8 @@ class MixtapeAudioHandler extends BaseAudioHandler
     this.androidLoudnessEnhancer,
     this._cacheAudioFiles,
     this._volume,
+    bool crossfadeEnabled,
+    int crossfadeDurationSeconds,
   ) {
     _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
     unawaited(_player.setVolume(_volume.clamp(0.0, 1.0)));
@@ -83,6 +95,12 @@ class MixtapeAudioHandler extends BaseAudioHandler
       );
     });
     _player.currentIndexStream.listen(_onIndexChanged);
+    unawaited(
+      setCrossfade(
+        enabled: crossfadeEnabled,
+        durationSeconds: crossfadeDurationSeconds,
+      ),
+    );
   }
 
   Track? _currentTrack;
@@ -123,8 +141,70 @@ class MixtapeAudioHandler extends BaseAudioHandler
 
   Future<void> setVolume(double volume) async {
     _volume = volume.clamp(0.0, 1.0);
+    if (_boundaryFadeTimer != null) return;
     await _player.setVolume(_volume);
     _log('[PLAYER] volume set to ${(_volume * 100).round()}%');
+  }
+
+  Future<void> setCrossfade({
+    required bool enabled,
+    required int durationSeconds,
+  }) async {
+    _boundaryMicroFadeEnabled = enabled;
+    final ms = enabled
+        ? (durationSeconds <= 0
+              ? 180
+              : (120 + (durationSeconds * 40)).clamp(120, 360))
+        : 0;
+    _boundaryMicroFadeDuration = Duration(milliseconds: ms);
+
+    if (!enabled) {
+      _boundaryFadeToken++;
+      _boundaryFadeTimer?.cancel();
+      _boundaryFadeTimer = null;
+      await _player.setVolume(_volume);
+    }
+
+    _log('[PLAYER] boundary-fade=${enabled ? 'on' : 'off'} ms=$ms');
+  }
+
+  Future<void> _applyBoundaryMicroFade() async {
+    if (!_boundaryMicroFadeEnabled) return;
+    if (!_player.playing) return;
+
+    _boundaryFadeToken++;
+    final token = _boundaryFadeToken;
+    _boundaryFadeTimer?.cancel();
+    _boundaryFadeTimer = null;
+
+    final totalMs = _boundaryMicroFadeDuration.inMilliseconds;
+    if (totalMs <= 0) return;
+
+    await _player.setVolume(0);
+
+    const stepMs = 30;
+    final steps = (totalMs / stepMs).ceil().clamp(1, 20);
+    var step = 0;
+
+    _boundaryFadeTimer = Timer.periodic(const Duration(milliseconds: stepMs), (
+      timer,
+    ) {
+      if (token != _boundaryFadeToken) {
+        timer.cancel();
+        return;
+      }
+
+      step++;
+      final t = (step / steps).clamp(0.0, 1.0);
+      final eased = t * t * (3 - 2 * t);
+      _player.setVolume(_volume * eased);
+
+      if (step >= steps) {
+        timer.cancel();
+        _boundaryFadeTimer = null;
+        _player.setVolume(_volume);
+      }
+    });
   }
 
   void _setResolving(bool v) {
@@ -320,6 +400,42 @@ class MixtapeAudioHandler extends BaseAudioHandler
     return AudioSource.uri(Uri.parse(uri));
   }
 
+  String _stableTrackKey(Track track) {
+    final stableTrackKey = track.id.isNotEmpty ? track.id : track.uri;
+    return '${track.sourcePluginId}:$stableTrackKey';
+  }
+
+  bool _isDurationClearlyMismatched(Duration a, Duration b) {
+    if (a <= Duration.zero || b <= Duration.zero) return false;
+    final aMs = a.inMilliseconds;
+    final bMs = b.inMilliseconds;
+    if (aMs <= 0 || bMs <= 0) return false;
+    final ratio = aMs / bMs;
+    return ratio >= 1.8 || ratio <= (1 / 1.8);
+  }
+
+  void _applyResolvedDurationHint(Track reference, Duration hintedDuration) {
+    if (hintedDuration <= Duration.zero) return;
+    final key = _stableTrackKey(reference);
+
+    for (var i = 0; i < _trackQueue.length; i++) {
+      final current = _trackQueue[i];
+      if (_stableTrackKey(current) != key) continue;
+
+      final existing = current.duration;
+      final shouldReplace =
+          existing == null ||
+          _isDurationClearlyMismatched(existing, hintedDuration);
+      if (!shouldReplace) continue;
+
+      final updated = current.copyWith(duration: hintedDuration);
+      _trackQueue[i] = updated;
+      if (_currentTrack == current) {
+        _currentTrack = updated;
+      }
+    }
+  }
+
   Future<AudioSource> _buildSource(Track track) async {
     final plugin = _registry[track.sourcePluginId];
     String resolvedUri = plugin != null
@@ -338,6 +454,11 @@ class MixtapeAudioHandler extends BaseAudioHandler
           final uriBeforeResolve = resolvedUri;
           resolvedUri = await resolver.resolveStreamUrl(uriBeforeResolve);
           headers = await resolver.resolveStreamHeaders(uriBeforeResolve);
+
+          final hintedDuration = resolver.resolvedDuration(uriBeforeResolve);
+          if (hintedDuration != null) {
+            _applyResolvedDurationHint(track, hintedDuration);
+          }
         }
       }
 
@@ -366,8 +487,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
       return AudioSource.uri(Uri.parse(resolvedUri));
     }
 
-    final stableTrackKey = track.id.isNotEmpty ? track.id : track.uri;
-    final cacheKey = '${track.sourcePluginId}:$stableTrackKey';
+    final cacheKey = _stableTrackKey(track);
     if (_cacheAudioFiles && resolvedUri.startsWith('http')) {
       final cachedPath = await _audioFileCache.getCachedFilePath(cacheKey);
       if (cachedPath != null) {
@@ -445,6 +565,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
     if (index != null && index < _trackQueue.length) {
       _currentTrack = _trackQueue[index];
       _broadcastMediaItem(_trackQueue[index]);
+      unawaited(_applyBoundaryMicroFade());
       // Eagerly resolve N+1, N+2, and N+3 so they're ready before the user reaches them.
       final gen = _queueGeneration;
       unawaited(_resolveAtIndex(index + 1, gen: gen));
@@ -559,6 +680,9 @@ class MixtapeAudioHandler extends BaseAudioHandler
   }
 
   Future<void> disposePlayer() async {
+    _boundaryFadeToken++;
+    _boundaryFadeTimer?.cancel();
+    _boundaryFadeTimer = null;
     await _player.dispose();
     await _proxy.close();
     await _resolvingController.close();

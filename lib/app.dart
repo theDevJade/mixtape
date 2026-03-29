@@ -330,6 +330,19 @@ class _AppRootState extends ConsumerState<_AppRoot> {
       ref.read(audioHandlerProvider).setVolume(volume);
     });
 
+    // Keep crossfade mode in sync with settings while app is running.
+    ref.listen(
+      appSettingsProvider.select(
+        (s) => (s.crossfadeEnabled, s.crossfadeDurationSeconds),
+      ),
+      (_, next) {
+        final (enabled, seconds) = next;
+        ref
+            .read(audioHandlerProvider)
+            .setCrossfade(enabled: enabled, durationSeconds: seconds);
+      },
+    );
+
     return const AdaptiveScaffold();
   }
 }

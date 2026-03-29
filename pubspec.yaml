@@ -60,6 +60,7 @@ dependencies:
   webview_flutter: ^4.10.0
   video_player: ^2.9.2
   dart_discord_presence: ^1.2.0
+  opus_caf_converter_dart: ^1.0.1
 
 dev_dependencies:
   flutter_test:
