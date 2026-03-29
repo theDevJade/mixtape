@@ -1652,6 +1652,670 @@ class PluginConfigsTableCompanion
   }
 }
 
+class $PlayHistoryTableTable extends PlayHistoryTable
+    with TableInfo<$PlayHistoryTableTable, PlayHistoryTableData> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $PlayHistoryTableTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _trackIdMeta = const VerificationMeta(
+    'trackId',
+  );
+  @override
+  late final GeneratedColumn<String> trackId = GeneratedColumn<String>(
+    'track_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _trackSourcePluginIdMeta =
+      const VerificationMeta('trackSourcePluginId');
+  @override
+  late final GeneratedColumn<String> trackSourcePluginId =
+      GeneratedColumn<String>(
+        'track_source_plugin_id',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _artistMeta = const VerificationMeta('artist');
+  @override
+  late final GeneratedColumn<String> artist = GeneratedColumn<String>(
+    'artist',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _albumMeta = const VerificationMeta('album');
+  @override
+  late final GeneratedColumn<String> album = GeneratedColumn<String>(
+    'album',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _albumArtUrlMeta = const VerificationMeta(
+    'albumArtUrl',
+  );
+  @override
+  late final GeneratedColumn<String> albumArtUrl = GeneratedColumn<String>(
+    'album_art_url',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _durationMsMeta = const VerificationMeta(
+    'durationMs',
+  );
+  @override
+  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
+    'duration_ms',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _uriMeta = const VerificationMeta('uri');
+  @override
+  late final GeneratedColumn<String> uri = GeneratedColumn<String>(
+    'uri',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMetadataJsonMeta =
+      const VerificationMeta('sourceMetadataJson');
+  @override
+  late final GeneratedColumn<String> sourceMetadataJson =
+      GeneratedColumn<String>(
+        'source_metadata_json',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('{}'),
+      );
+  static const VerificationMeta _playedAtMeta = const VerificationMeta(
+    'playedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> playedAt = GeneratedColumn<DateTime>(
+    'played_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    defaultValue: currentDateAndTime,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    trackId,
+    trackSourcePluginId,
+    title,
+    artist,
+    album,
+    albumArtUrl,
+    durationMs,
+    uri,
+    sourceMetadataJson,
+    playedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'play_history_table';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<PlayHistoryTableData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('track_id')) {
+      context.handle(
+        _trackIdMeta,
+        trackId.isAcceptableOrUnknown(data['track_id']!, _trackIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_trackIdMeta);
+    }
+    if (data.containsKey('track_source_plugin_id')) {
+      context.handle(
+        _trackSourcePluginIdMeta,
+        trackSourcePluginId.isAcceptableOrUnknown(
+          data['track_source_plugin_id']!,
+          _trackSourcePluginIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_trackSourcePluginIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('artist')) {
+      context.handle(
+        _artistMeta,
+        artist.isAcceptableOrUnknown(data['artist']!, _artistMeta),
+      );
+    }
+    if (data.containsKey('album')) {
+      context.handle(
+        _albumMeta,
+        album.isAcceptableOrUnknown(data['album']!, _albumMeta),
+      );
+    }
+    if (data.containsKey('album_art_url')) {
+      context.handle(
+        _albumArtUrlMeta,
+        albumArtUrl.isAcceptableOrUnknown(
+          data['album_art_url']!,
+          _albumArtUrlMeta,
+        ),
+      );
+    }
+    if (data.containsKey('duration_ms')) {
+      context.handle(
+        _durationMsMeta,
+        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
+      );
+    }
+    if (data.containsKey('uri')) {
+      context.handle(
+        _uriMeta,
+        uri.isAcceptableOrUnknown(data['uri']!, _uriMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_uriMeta);
+    }
+    if (data.containsKey('source_metadata_json')) {
+      context.handle(
+        _sourceMetadataJsonMeta,
+        sourceMetadataJson.isAcceptableOrUnknown(
+          data['source_metadata_json']!,
+          _sourceMetadataJsonMeta,
+        ),
+      );
+    }
+    if (data.containsKey('played_at')) {
+      context.handle(
+        _playedAtMeta,
+        playedAt.isAcceptableOrUnknown(data['played_at']!, _playedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  PlayHistoryTableData map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return PlayHistoryTableData(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      trackId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}track_id'],
+      )!,
+      trackSourcePluginId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}track_source_plugin_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      artist: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artist'],
+      ),
+      album: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}album'],
+      ),
+      albumArtUrl: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}album_art_url'],
+      ),
+      durationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_ms'],
+      ),
+      uri: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}uri'],
+      )!,
+      sourceMetadataJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_metadata_json'],
+      )!,
+      playedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}played_at'],
+      )!,
+    );
+  }
+
+  @override
+  $PlayHistoryTableTable createAlias(String alias) {
+    return $PlayHistoryTableTable(attachedDatabase, alias);
+  }
+}
+
+class PlayHistoryTableData extends DataClass
+    implements Insertable<PlayHistoryTableData> {
+  final int id;
+  final String trackId;
+  final String trackSourcePluginId;
+  final String title;
+  final String? artist;
+  final String? album;
+  final String? albumArtUrl;
+  final int? durationMs;
+  final String uri;
+  final String sourceMetadataJson;
+  final DateTime playedAt;
+  const PlayHistoryTableData({
+    required this.id,
+    required this.trackId,
+    required this.trackSourcePluginId,
+    required this.title,
+    this.artist,
+    this.album,
+    this.albumArtUrl,
+    this.durationMs,
+    required this.uri,
+    required this.sourceMetadataJson,
+    required this.playedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['track_id'] = Variable<String>(trackId);
+    map['track_source_plugin_id'] = Variable<String>(trackSourcePluginId);
+    map['title'] = Variable<String>(title);
+    if (!nullToAbsent || artist != null) {
+      map['artist'] = Variable<String>(artist);
+    }
+    if (!nullToAbsent || album != null) {
+      map['album'] = Variable<String>(album);
+    }
+    if (!nullToAbsent || albumArtUrl != null) {
+      map['album_art_url'] = Variable<String>(albumArtUrl);
+    }
+    if (!nullToAbsent || durationMs != null) {
+      map['duration_ms'] = Variable<int>(durationMs);
+    }
+    map['uri'] = Variable<String>(uri);
+    map['source_metadata_json'] = Variable<String>(sourceMetadataJson);
+    map['played_at'] = Variable<DateTime>(playedAt);
+    return map;
+  }
+
+  PlayHistoryTableCompanion toCompanion(bool nullToAbsent) {
+    return PlayHistoryTableCompanion(
+      id: Value(id),
+      trackId: Value(trackId),
+      trackSourcePluginId: Value(trackSourcePluginId),
+      title: Value(title),
+      artist: artist == null && nullToAbsent
+          ? const Value.absent()
+          : Value(artist),
+      album: album == null && nullToAbsent
+          ? const Value.absent()
+          : Value(album),
+      albumArtUrl: albumArtUrl == null && nullToAbsent
+          ? const Value.absent()
+          : Value(albumArtUrl),
+      durationMs: durationMs == null && nullToAbsent
+          ? const Value.absent()
+          : Value(durationMs),
+      uri: Value(uri),
+      sourceMetadataJson: Value(sourceMetadataJson),
+      playedAt: Value(playedAt),
+    );
+  }
+
+  factory PlayHistoryTableData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return PlayHistoryTableData(
+      id: serializer.fromJson<int>(json['id']),
+      trackId: serializer.fromJson<String>(json['trackId']),
+      trackSourcePluginId: serializer.fromJson<String>(
+        json['trackSourcePluginId'],
+      ),
+      title: serializer.fromJson<String>(json['title']),
+      artist: serializer.fromJson<String?>(json['artist']),
+      album: serializer.fromJson<String?>(json['album']),
+      albumArtUrl: serializer.fromJson<String?>(json['albumArtUrl']),
+      durationMs: serializer.fromJson<int?>(json['durationMs']),
+      uri: serializer.fromJson<String>(json['uri']),
+      sourceMetadataJson: serializer.fromJson<String>(
+        json['sourceMetadataJson'],
+      ),
+      playedAt: serializer.fromJson<DateTime>(json['playedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'trackId': serializer.toJson<String>(trackId),
+      'trackSourcePluginId': serializer.toJson<String>(trackSourcePluginId),
+      'title': serializer.toJson<String>(title),
+      'artist': serializer.toJson<String?>(artist),
+      'album': serializer.toJson<String?>(album),
+      'albumArtUrl': serializer.toJson<String?>(albumArtUrl),
+      'durationMs': serializer.toJson<int?>(durationMs),
+      'uri': serializer.toJson<String>(uri),
+      'sourceMetadataJson': serializer.toJson<String>(sourceMetadataJson),
+      'playedAt': serializer.toJson<DateTime>(playedAt),
+    };
+  }
+
+  PlayHistoryTableData copyWith({
+    int? id,
+    String? trackId,
+    String? trackSourcePluginId,
+    String? title,
+    Value<String?> artist = const Value.absent(),
+    Value<String?> album = const Value.absent(),
+    Value<String?> albumArtUrl = const Value.absent(),
+    Value<int?> durationMs = const Value.absent(),
+    String? uri,
+    String? sourceMetadataJson,
+    DateTime? playedAt,
+  }) => PlayHistoryTableData(
+    id: id ?? this.id,
+    trackId: trackId ?? this.trackId,
+    trackSourcePluginId: trackSourcePluginId ?? this.trackSourcePluginId,
+    title: title ?? this.title,
+    artist: artist.present ? artist.value : this.artist,
+    album: album.present ? album.value : this.album,
+    albumArtUrl: albumArtUrl.present ? albumArtUrl.value : this.albumArtUrl,
+    durationMs: durationMs.present ? durationMs.value : this.durationMs,
+    uri: uri ?? this.uri,
+    sourceMetadataJson: sourceMetadataJson ?? this.sourceMetadataJson,
+    playedAt: playedAt ?? this.playedAt,
+  );
+  PlayHistoryTableData copyWithCompanion(PlayHistoryTableCompanion data) {
+    return PlayHistoryTableData(
+      id: data.id.present ? data.id.value : this.id,
+      trackId: data.trackId.present ? data.trackId.value : this.trackId,
+      trackSourcePluginId: data.trackSourcePluginId.present
+          ? data.trackSourcePluginId.value
+          : this.trackSourcePluginId,
+      title: data.title.present ? data.title.value : this.title,
+      artist: data.artist.present ? data.artist.value : this.artist,
+      album: data.album.present ? data.album.value : this.album,
+      albumArtUrl: data.albumArtUrl.present
+          ? data.albumArtUrl.value
+          : this.albumArtUrl,
+      durationMs: data.durationMs.present
+          ? data.durationMs.value
+          : this.durationMs,
+      uri: data.uri.present ? data.uri.value : this.uri,
+      sourceMetadataJson: data.sourceMetadataJson.present
+          ? data.sourceMetadataJson.value
+          : this.sourceMetadataJson,
+      playedAt: data.playedAt.present ? data.playedAt.value : this.playedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlayHistoryTableData(')
+          ..write('id: $id, ')
+          ..write('trackId: $trackId, ')
+          ..write('trackSourcePluginId: $trackSourcePluginId, ')
+          ..write('title: $title, ')
+          ..write('artist: $artist, ')
+          ..write('album: $album, ')
+          ..write('albumArtUrl: $albumArtUrl, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('uri: $uri, ')
+          ..write('sourceMetadataJson: $sourceMetadataJson, ')
+          ..write('playedAt: $playedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    trackId,
+    trackSourcePluginId,
+    title,
+    artist,
+    album,
+    albumArtUrl,
+    durationMs,
+    uri,
+    sourceMetadataJson,
+    playedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is PlayHistoryTableData &&
+          other.id == this.id &&
+          other.trackId == this.trackId &&
+          other.trackSourcePluginId == this.trackSourcePluginId &&
+          other.title == this.title &&
+          other.artist == this.artist &&
+          other.album == this.album &&
+          other.albumArtUrl == this.albumArtUrl &&
+          other.durationMs == this.durationMs &&
+          other.uri == this.uri &&
+          other.sourceMetadataJson == this.sourceMetadataJson &&
+          other.playedAt == this.playedAt);
+}
+
+class PlayHistoryTableCompanion extends UpdateCompanion<PlayHistoryTableData> {
+  final Value<int> id;
+  final Value<String> trackId;
+  final Value<String> trackSourcePluginId;
+  final Value<String> title;
+  final Value<String?> artist;
+  final Value<String?> album;
+  final Value<String?> albumArtUrl;
+  final Value<int?> durationMs;
+  final Value<String> uri;
+  final Value<String> sourceMetadataJson;
+  final Value<DateTime> playedAt;
+  const PlayHistoryTableCompanion({
+    this.id = const Value.absent(),
+    this.trackId = const Value.absent(),
+    this.trackSourcePluginId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.artist = const Value.absent(),
+    this.album = const Value.absent(),
+    this.albumArtUrl = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.uri = const Value.absent(),
+    this.sourceMetadataJson = const Value.absent(),
+    this.playedAt = const Value.absent(),
+  });
+  PlayHistoryTableCompanion.insert({
+    this.id = const Value.absent(),
+    required String trackId,
+    required String trackSourcePluginId,
+    required String title,
+    this.artist = const Value.absent(),
+    this.album = const Value.absent(),
+    this.albumArtUrl = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    required String uri,
+    this.sourceMetadataJson = const Value.absent(),
+    this.playedAt = const Value.absent(),
+  }) : trackId = Value(trackId),
+       trackSourcePluginId = Value(trackSourcePluginId),
+       title = Value(title),
+       uri = Value(uri);
+  static Insertable<PlayHistoryTableData> custom({
+    Expression<int>? id,
+    Expression<String>? trackId,
+    Expression<String>? trackSourcePluginId,
+    Expression<String>? title,
+    Expression<String>? artist,
+    Expression<String>? album,
+    Expression<String>? albumArtUrl,
+    Expression<int>? durationMs,
+    Expression<String>? uri,
+    Expression<String>? sourceMetadataJson,
+    Expression<DateTime>? playedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (trackId != null) 'track_id': trackId,
+      if (trackSourcePluginId != null)
+        'track_source_plugin_id': trackSourcePluginId,
+      if (title != null) 'title': title,
+      if (artist != null) 'artist': artist,
+      if (album != null) 'album': album,
+      if (albumArtUrl != null) 'album_art_url': albumArtUrl,
+      if (durationMs != null) 'duration_ms': durationMs,
+      if (uri != null) 'uri': uri,
+      if (sourceMetadataJson != null)
+        'source_metadata_json': sourceMetadataJson,
+      if (playedAt != null) 'played_at': playedAt,
+    });
+  }
+
+  PlayHistoryTableCompanion copyWith({
+    Value<int>? id,
+    Value<String>? trackId,
+    Value<String>? trackSourcePluginId,
+    Value<String>? title,
+    Value<String?>? artist,
+    Value<String?>? album,
+    Value<String?>? albumArtUrl,
+    Value<int?>? durationMs,
+    Value<String>? uri,
+    Value<String>? sourceMetadataJson,
+    Value<DateTime>? playedAt,
+  }) {
+    return PlayHistoryTableCompanion(
+      id: id ?? this.id,
+      trackId: trackId ?? this.trackId,
+      trackSourcePluginId: trackSourcePluginId ?? this.trackSourcePluginId,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      albumArtUrl: albumArtUrl ?? this.albumArtUrl,
+      durationMs: durationMs ?? this.durationMs,
+      uri: uri ?? this.uri,
+      sourceMetadataJson: sourceMetadataJson ?? this.sourceMetadataJson,
+      playedAt: playedAt ?? this.playedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (trackId.present) {
+      map['track_id'] = Variable<String>(trackId.value);
+    }
+    if (trackSourcePluginId.present) {
+      map['track_source_plugin_id'] = Variable<String>(
+        trackSourcePluginId.value,
+      );
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (artist.present) {
+      map['artist'] = Variable<String>(artist.value);
+    }
+    if (album.present) {
+      map['album'] = Variable<String>(album.value);
+    }
+    if (albumArtUrl.present) {
+      map['album_art_url'] = Variable<String>(albumArtUrl.value);
+    }
+    if (durationMs.present) {
+      map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (uri.present) {
+      map['uri'] = Variable<String>(uri.value);
+    }
+    if (sourceMetadataJson.present) {
+      map['source_metadata_json'] = Variable<String>(sourceMetadataJson.value);
+    }
+    if (playedAt.present) {
+      map['played_at'] = Variable<DateTime>(playedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('PlayHistoryTableCompanion(')
+          ..write('id: $id, ')
+          ..write('trackId: $trackId, ')
+          ..write('trackSourcePluginId: $trackSourcePluginId, ')
+          ..write('title: $title, ')
+          ..write('artist: $artist, ')
+          ..write('album: $album, ')
+          ..write('albumArtUrl: $albumArtUrl, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('uri: $uri, ')
+          ..write('sourceMetadataJson: $sourceMetadataJson, ')
+          ..write('playedAt: $playedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -1661,6 +2325,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $PlaylistTracksTableTable(this);
   late final $PluginConfigsTableTable pluginConfigsTable =
       $PluginConfigsTableTable(this);
+  late final $PlayHistoryTableTable playHistoryTable = $PlayHistoryTableTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1670,6 +2337,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     playlistsTable,
     playlistTracksTable,
     pluginConfigsTable,
+    playHistoryTable,
   ];
 }
 
@@ -2822,6 +3490,332 @@ typedef $$PluginConfigsTableTableProcessedTableManager =
       PluginConfigsTableData,
       PrefetchHooks Function()
     >;
+typedef $$PlayHistoryTableTableCreateCompanionBuilder =
+    PlayHistoryTableCompanion Function({
+      Value<int> id,
+      required String trackId,
+      required String trackSourcePluginId,
+      required String title,
+      Value<String?> artist,
+      Value<String?> album,
+      Value<String?> albumArtUrl,
+      Value<int?> durationMs,
+      required String uri,
+      Value<String> sourceMetadataJson,
+      Value<DateTime> playedAt,
+    });
+typedef $$PlayHistoryTableTableUpdateCompanionBuilder =
+    PlayHistoryTableCompanion Function({
+      Value<int> id,
+      Value<String> trackId,
+      Value<String> trackSourcePluginId,
+      Value<String> title,
+      Value<String?> artist,
+      Value<String?> album,
+      Value<String?> albumArtUrl,
+      Value<int?> durationMs,
+      Value<String> uri,
+      Value<String> sourceMetadataJson,
+      Value<DateTime> playedAt,
+    });
+
+class $$PlayHistoryTableTableFilterComposer
+    extends Composer<_$AppDatabase, $PlayHistoryTableTable> {
+  $$PlayHistoryTableTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get trackId => $composableBuilder(
+    column: $table.trackId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get trackSourcePluginId => $composableBuilder(
+    column: $table.trackSourcePluginId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artist => $composableBuilder(
+    column: $table.artist,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get album => $composableBuilder(
+    column: $table.album,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get albumArtUrl => $composableBuilder(
+    column: $table.albumArtUrl,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get uri => $composableBuilder(
+    column: $table.uri,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceMetadataJson => $composableBuilder(
+    column: $table.sourceMetadataJson,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get playedAt => $composableBuilder(
+    column: $table.playedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$PlayHistoryTableTableOrderingComposer
+    extends Composer<_$AppDatabase, $PlayHistoryTableTable> {
+  $$PlayHistoryTableTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get trackId => $composableBuilder(
+    column: $table.trackId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get trackSourcePluginId => $composableBuilder(
+    column: $table.trackSourcePluginId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artist => $composableBuilder(
+    column: $table.artist,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get album => $composableBuilder(
+    column: $table.album,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get albumArtUrl => $composableBuilder(
+    column: $table.albumArtUrl,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get uri => $composableBuilder(
+    column: $table.uri,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceMetadataJson => $composableBuilder(
+    column: $table.sourceMetadataJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get playedAt => $composableBuilder(
+    column: $table.playedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$PlayHistoryTableTableAnnotationComposer
+    extends Composer<_$AppDatabase, $PlayHistoryTableTable> {
+  $$PlayHistoryTableTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get trackId =>
+      $composableBuilder(column: $table.trackId, builder: (column) => column);
+
+  GeneratedColumn<String> get trackSourcePluginId => $composableBuilder(
+    column: $table.trackSourcePluginId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get artist =>
+      $composableBuilder(column: $table.artist, builder: (column) => column);
+
+  GeneratedColumn<String> get album =>
+      $composableBuilder(column: $table.album, builder: (column) => column);
+
+  GeneratedColumn<String> get albumArtUrl => $composableBuilder(
+    column: $table.albumArtUrl,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get uri =>
+      $composableBuilder(column: $table.uri, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceMetadataJson => $composableBuilder(
+    column: $table.sourceMetadataJson,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get playedAt =>
+      $composableBuilder(column: $table.playedAt, builder: (column) => column);
+}
+
+class $$PlayHistoryTableTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $PlayHistoryTableTable,
+          PlayHistoryTableData,
+          $$PlayHistoryTableTableFilterComposer,
+          $$PlayHistoryTableTableOrderingComposer,
+          $$PlayHistoryTableTableAnnotationComposer,
+          $$PlayHistoryTableTableCreateCompanionBuilder,
+          $$PlayHistoryTableTableUpdateCompanionBuilder,
+          (
+            PlayHistoryTableData,
+            BaseReferences<
+              _$AppDatabase,
+              $PlayHistoryTableTable,
+              PlayHistoryTableData
+            >,
+          ),
+          PlayHistoryTableData,
+          PrefetchHooks Function()
+        > {
+  $$PlayHistoryTableTableTableManager(
+    _$AppDatabase db,
+    $PlayHistoryTableTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$PlayHistoryTableTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$PlayHistoryTableTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$PlayHistoryTableTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> trackId = const Value.absent(),
+                Value<String> trackSourcePluginId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String?> artist = const Value.absent(),
+                Value<String?> album = const Value.absent(),
+                Value<String?> albumArtUrl = const Value.absent(),
+                Value<int?> durationMs = const Value.absent(),
+                Value<String> uri = const Value.absent(),
+                Value<String> sourceMetadataJson = const Value.absent(),
+                Value<DateTime> playedAt = const Value.absent(),
+              }) => PlayHistoryTableCompanion(
+                id: id,
+                trackId: trackId,
+                trackSourcePluginId: trackSourcePluginId,
+                title: title,
+                artist: artist,
+                album: album,
+                albumArtUrl: albumArtUrl,
+                durationMs: durationMs,
+                uri: uri,
+                sourceMetadataJson: sourceMetadataJson,
+                playedAt: playedAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String trackId,
+                required String trackSourcePluginId,
+                required String title,
+                Value<String?> artist = const Value.absent(),
+                Value<String?> album = const Value.absent(),
+                Value<String?> albumArtUrl = const Value.absent(),
+                Value<int?> durationMs = const Value.absent(),
+                required String uri,
+                Value<String> sourceMetadataJson = const Value.absent(),
+                Value<DateTime> playedAt = const Value.absent(),
+              }) => PlayHistoryTableCompanion.insert(
+                id: id,
+                trackId: trackId,
+                trackSourcePluginId: trackSourcePluginId,
+                title: title,
+                artist: artist,
+                album: album,
+                albumArtUrl: albumArtUrl,
+                durationMs: durationMs,
+                uri: uri,
+                sourceMetadataJson: sourceMetadataJson,
+                playedAt: playedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$PlayHistoryTableTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $PlayHistoryTableTable,
+      PlayHistoryTableData,
+      $$PlayHistoryTableTableFilterComposer,
+      $$PlayHistoryTableTableOrderingComposer,
+      $$PlayHistoryTableTableAnnotationComposer,
+      $$PlayHistoryTableTableCreateCompanionBuilder,
+      $$PlayHistoryTableTableUpdateCompanionBuilder,
+      (
+        PlayHistoryTableData,
+        BaseReferences<
+          _$AppDatabase,
+          $PlayHistoryTableTable,
+          PlayHistoryTableData
+        >,
+      ),
+      PlayHistoryTableData,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -2834,4 +3828,6 @@ class $AppDatabaseManager {
       $$PlaylistTracksTableTableTableManager(_db, _db.playlistTracksTable);
   $$PluginConfigsTableTableTableManager get pluginConfigsTable =>
       $$PluginConfigsTableTableTableManager(_db, _db.pluginConfigsTable);
+  $$PlayHistoryTableTableTableManager get playHistoryTable =>
+      $$PlayHistoryTableTableTableManager(_db, _db.playHistoryTable);
 }

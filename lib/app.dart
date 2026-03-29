@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/audio/player_service.dart';
 import 'core/models/track.dart';
+import 'core/database/daos/play_history_dao.dart';
 import 'core/discord/discord_rpc_service.dart';
 import 'core/settings/settings_provider.dart';
+import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'shared/widgets/adaptive_scaffold.dart';
 
@@ -91,6 +93,10 @@ class _AppRootState extends ConsumerState<_AppRoot>
             name: 'mixtape.sync',
           );
           ref.read(currentTrackProvider.notifier).state = track;
+
+          // Record play history
+          final db = ref.read(databaseProvider);
+          PlayHistoryDao(db).recordPlay(track);
         }
       });
 

@@ -119,6 +119,21 @@ class PlayerService {
 
   Future<void> skipToIndex(int index) => _handler.skipToIndex(index);
 
+  void removeFromQueue(int index) {
+    _handler.removeFromQueue(index);
+    _ref.read(queueProvider.notifier).state = List.from(_handler.trackQueue);
+  }
+
+  void reorderQueue(int oldIndex, int newIndex) {
+    _handler.reorderQueue(oldIndex, newIndex);
+    _ref.read(queueProvider.notifier).state = List.from(_handler.trackQueue);
+  }
+
+  void clearUpcoming() {
+    _handler.clearUpcoming();
+    _ref.read(queueProvider.notifier).state = List.from(_handler.trackQueue);
+  }
+
   Future<void> setPlaybackSpeed(double speed) async {
     _ref.read(playbackSpeedProvider.notifier).state = speed;
     await _handler.setPlaybackSpeed(speed);
@@ -274,6 +289,31 @@ final playerServiceProvider = Provider<PlayerService>((ref) {
   final handler = ref.watch(audioHandlerProvider);
   return PlayerService(handler, ref);
 });
+
+// ── Library (heart/like) ────────────────────────────────────────────────────
+
+final isInLibraryProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final track = ref.watch(currentTrackProvider);
+  if (track == null) return false;
+  final db = ref.watch(databaseProvider);
+  final dao = TracksDao(db);
+  final existing = await dao.getTrack(track.id, track.sourcePluginId);
+  return existing != null;
+});
+
+Future<void> toggleLibrary(WidgetRef ref) async {
+  final track = ref.read(currentTrackProvider);
+  if (track == null) return;
+  final db = ref.read(databaseProvider);
+  final dao = TracksDao(db);
+  final existing = await dao.getTrack(track.id, track.sourcePluginId);
+  if (existing != null) {
+    await dao.deleteTrack(track.id, track.sourcePluginId);
+  } else {
+    await dao.upsertTrack(track);
+  }
+  ref.invalidate(isInLibraryProvider);
+}
 
 // ── EQ providers (Android only) ─────────────────────────────────────────────
 

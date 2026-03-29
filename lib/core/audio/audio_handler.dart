@@ -455,6 +455,77 @@ class MixtapeAudioHandler extends BaseAudioHandler
     await _playIndex(index);
   }
 
+  void removeFromQueue(int index) {
+    if (index < 0 || index >= _trackQueue.length) return;
+    if (index == _currentIndex) return; // Can't remove currently playing track
+
+    _trackQueue.removeAt(index);
+
+    // Shift resolved sources
+    final shifted = <int, _ResolvedSource>{};
+    for (final entry in _resolvedSources.entries) {
+      if (entry.key == index) continue;
+      shifted[entry.key > index ? entry.key - 1 : entry.key] = entry.value;
+    }
+    _resolvedSources
+      ..clear()
+      ..addAll(shifted);
+
+    // Adjust current index if needed
+    if (index < _currentIndex) {
+      _currentIndex--;
+    }
+
+    // Adjust shuffle order
+    if (_shuffleEnabled && _shuffleOrder != null) {
+      _shuffleOrder!.remove(index);
+      _shuffleOrder = _shuffleOrder!.map((i) => i > index ? i - 1 : i).toList();
+    }
+  }
+
+  void reorderQueue(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _trackQueue.length) return;
+    if (newIndex < 0 || newIndex > _trackQueue.length) return;
+    if (oldIndex == newIndex) return;
+
+    final track = _trackQueue.removeAt(oldIndex);
+    final adjustedNew = newIndex > oldIndex ? newIndex - 1 : newIndex;
+    _trackQueue.insert(adjustedNew, track);
+
+    // Adjust current index to follow the currently playing track
+    if (oldIndex == _currentIndex) {
+      _currentIndex = adjustedNew;
+    } else if (oldIndex < _currentIndex && adjustedNew >= _currentIndex) {
+      _currentIndex--;
+    } else if (oldIndex > _currentIndex && adjustedNew <= _currentIndex) {
+      _currentIndex++;
+    }
+
+    // Rebuild resolved source map (too complex to shift; just clear and re-resolve)
+    _resolvedSources.clear();
+    _resolvingIndices.clear();
+    final gen = _queueGeneration;
+    unawaited(_preResolve(_currentIndex + 1, gen: gen));
+    unawaited(_preResolve(_currentIndex + 2, gen: gen));
+
+    // Rebuild shuffle order if active
+    if (_shuffleEnabled) {
+      _buildShuffleOrder(_currentIndex);
+    }
+  }
+
+  void clearUpcoming() {
+    if (_trackQueue.isEmpty) return;
+    final current = _trackQueue[_currentIndex];
+    _trackQueue = [current];
+    _currentIndex = 0;
+    _resolvedSources.clear();
+    _resolvingIndices.clear();
+    if (_shuffleEnabled) {
+      _shuffleOrder = [0];
+    }
+  }
+
   // ── AudioHandler overrides ──────────────────────────────────────────────────
 
   @override

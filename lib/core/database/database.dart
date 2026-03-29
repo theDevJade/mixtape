@@ -14,7 +14,8 @@ class TracksTable extends Table {
   IntColumn get durationMs => integer().nullable()();
   TextColumn get uri => text()();
   TextColumn get sourcePluginId => text()();
-  TextColumn get sourceMetadataJson => text().withDefault(const Constant('{}'))();
+  TextColumn get sourceMetadataJson =>
+      text().withDefault(const Constant('{}'))();
   DateTimeColumn get addedAt => dateTime().withDefault(currentDateAndTime)();
 
   @override
@@ -52,6 +53,21 @@ class PluginConfigsTable extends Table {
   Set<Column> get primaryKey => {pluginId, key};
 }
 
+class PlayHistoryTable extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get trackId => text()();
+  TextColumn get trackSourcePluginId => text()();
+  TextColumn get title => text()();
+  TextColumn get artist => text().nullable()();
+  TextColumn get album => text().nullable()();
+  TextColumn get albumArtUrl => text().nullable()();
+  IntColumn get durationMs => integer().nullable()();
+  TextColumn get uri => text()();
+  TextColumn get sourceMetadataJson =>
+      text().withDefault(const Constant('{}'))();
+  DateTimeColumn get playedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 @DriftDatabase(
@@ -60,13 +76,24 @@ class PluginConfigsTable extends Table {
     PlaylistsTable,
     PlaylistTracksTable,
     PluginConfigsTable,
+    PlayHistoryTable,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+    onCreate: (m) => m.createAll(),
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await m.createTable(playHistoryTable);
+      }
+    },
+  );
 
   static QueryExecutor _openConnection() {
     return driftDatabase(name: 'mixtape_db');

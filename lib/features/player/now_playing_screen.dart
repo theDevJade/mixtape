@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import '../../core/audio/audio_handler.dart' show LoopMode;
+import '../../core/audio/sleep_timer.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/plugins/ytdlp/ytdlp_plugin.dart';
@@ -103,6 +104,16 @@ class NowPlayingScreen extends ConsumerWidget {
             tooltip: showLyrics ? 'Show artwork' : 'Show lyrics',
             onPressed: () =>
                 ref.read(_showLyricsProvider.notifier).state = !showLyrics,
+          ),
+          IconButton(
+            icon: Icon(
+              Icons.bedtime_rounded,
+              color: ref.watch(sleepTimerProvider).isActive
+                  ? Colors.white
+                  : Colors.white54,
+            ),
+            tooltip: 'Sleep timer',
+            onPressed: () => _showSleepTimerSheet(context, ref),
           ),
           IconButton(
             icon: const Icon(Icons.queue_music_rounded, color: Colors.white70),
@@ -235,6 +246,25 @@ class NowPlayingScreen extends ConsumerWidget {
                               ),
                           ],
                         ),
+                      ),
+                      Consumer(
+                        builder: (context, ref, _) {
+                          final isLiked =
+                              ref.watch(isInLibraryProvider).valueOrNull ??
+                              false;
+                          return IconButton(
+                            iconSize: 28,
+                            icon: Icon(
+                              isLiked
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              color: isLiked
+                                  ? Colors.greenAccent
+                                  : Colors.white70,
+                            ),
+                            onPressed: () => toggleLibrary(ref),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -571,6 +601,112 @@ class NowPlayingScreen extends ConsumerWidget {
     );
   }
 
+  void _showSleepTimerSheet(BuildContext context, WidgetRef ref) {
+    final timerState = ref.read(sleepTimerProvider);
+    if (timerState.isActive) {
+      // Show cancel option
+      showModalBottomSheet(
+        context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  'Sleep Timer Active',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (timerState.remaining != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    '${timerState.remaining!.inMinutes}m ${timerState.remaining!.inSeconds.remainder(60)}s remaining',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              if (timerState.endOfTrack)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'Stopping after current track',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              const Divider(height: 16),
+              ListTile(
+                leading: const Icon(Icons.cancel_rounded),
+                title: const Text('Cancel sleep timer'),
+                onTap: () {
+                  ref.read(sleepTimerProvider.notifier).cancel();
+                  Navigator.pop(context);
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      );
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                'Sleep Timer',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            const Divider(height: 1),
+            for (final minutes in [5, 10, 15, 30, 45, 60])
+              ListTile(
+                title: Text('$minutes minutes'),
+                onTap: () {
+                  ref
+                      .read(sleepTimerProvider.notifier)
+                      .start(Duration(minutes: minutes));
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Sleep timer set for $minutes minutes'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.music_note_rounded),
+              title: const Text('End of current track'),
+              onTap: () {
+                ref.read(sleepTimerProvider.notifier).startEndOfTrack();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Playback will stop after this track'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showTrackOptions(BuildContext context, WidgetRef ref) {
     final track = ref.read(currentTrackProvider);
     if (track == null) return;
@@ -839,6 +975,20 @@ class _QueueSheet extends ConsumerWidget {
                   '${queue.length} track${queue.length == 1 ? '' : 's'}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                const SizedBox(width: 8),
+                if (queue.length > 1)
+                  TextButton(
+                    onPressed: () {
+                      playerService.clearUpcoming();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Queue cleared'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    },
+                    child: const Text('Clear'),
+                  ),
               ],
             ),
           ),
@@ -846,60 +996,94 @@ class _QueueSheet extends ConsumerWidget {
           Expanded(
             child: queue.isEmpty
                 ? const Center(child: Text('Queue is empty'))
-                : ListView.builder(
-                    controller: scrollController,
+                : ReorderableListView.builder(
+                    scrollController: scrollController,
                     itemCount: queue.length,
+                    onReorder: (oldIndex, newIndex) {
+                      playerService.reorderQueue(oldIndex, newIndex);
+                    },
+                    proxyDecorator: (child, index, animation) => Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(8),
+                      child: child,
+                    ),
                     itemBuilder: (context, i) {
                       final t = queue[i];
                       final isCurrent = i == currentIndex;
-                      return ListTile(
-                        selected: isCurrent,
-                        leading: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            CoverArt(
-                              url: t.albumArtUrl,
-                              size: 40,
-                              borderRadius: 6,
-                            ),
-                            if (isCurrent)
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: Colors.black45,
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: const Icon(
-                                  Icons.volume_up_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                          ],
+                      return Dismissible(
+                        key: ValueKey('${t.id}:${t.sourcePluginId}:$i'),
+                        direction: isCurrent
+                            ? DismissDirection.none
+                            : DismissDirection.endToStart,
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          color: Theme.of(context).colorScheme.errorContainer,
+                          child: Icon(
+                            Icons.delete_rounded,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onErrorContainer,
+                          ),
                         ),
-                        title: Text(
-                          t.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: isCurrent
-                              ? TextStyle(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  fontWeight: FontWeight.w600,
+                        onDismissed: (_) {
+                          playerService.removeFromQueue(i);
+                        },
+                        child: ListTile(
+                          selected: isCurrent,
+                          leading: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              CoverArt(
+                                url: t.albumArtUrl,
+                                size: 40,
+                                borderRadius: 6,
+                              ),
+                              if (isCurrent)
+                                Container(
+                                  width: 40,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black45,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Icon(
+                                    Icons.volume_up_rounded,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          title: Text(
+                            t.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: isCurrent
+                                ? TextStyle(
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  )
+                                : null,
+                          ),
+                          subtitle: t.artist != null
+                              ? Text(
+                                  t.artist!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 )
                               : null,
+                          trailing: ReorderableDragStartListener(
+                            index: i,
+                            child: const Icon(Icons.drag_handle_rounded),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await playerService.skipToIndex(i);
+                          },
                         ),
-                        subtitle: t.artist != null
-                            ? Text(
-                                t.artist!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )
-                            : null,
-                        onTap: () async {
-                          Navigator.pop(context);
-                          await playerService.skipToIndex(i);
-                        },
                       );
                     },
                   ),

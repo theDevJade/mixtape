@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/audio/player_service.dart';
+import '../../core/settings/settings_provider.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/library/library_screen.dart';
 import '../../features/search/search_screen.dart';
@@ -64,8 +67,10 @@ class _AdaptiveScaffoldState extends ConsumerState<AdaptiveScaffold> {
 
     final isWide = MediaQuery.sizeOf(context).width >= 600;
     final body = _screens[_selectedIndex];
+    final isDesktop =
+        Platform.isMacOS || Platform.isLinux || Platform.isWindows;
 
-    return Scaffold(
+    Widget scaffold = Scaffold(
       body: Row(
         children: [
           if (isWide)
@@ -123,6 +128,52 @@ class _AdaptiveScaffoldState extends ConsumerState<AdaptiveScaffold> {
                   )
                   .toList(),
             ),
+    );
+
+    if (!isDesktop) return scaffold;
+
+    final playerService = ref.read(playerServiceProvider);
+    final settingsNotifier = ref.read(appSettingsProvider.notifier);
+
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.space): () {
+          final playing = ref.read(isPlayingProvider).valueOrNull ?? false;
+          playing ? playerService.pause() : playerService.resume();
+        },
+        SingleActivator(
+          LogicalKeyboardKey.arrowRight,
+          meta: Platform.isMacOS,
+          control: !Platform.isMacOS,
+        ): () =>
+            playerService.skipToNext(),
+        SingleActivator(
+          LogicalKeyboardKey.arrowLeft,
+          meta: Platform.isMacOS,
+          control: !Platform.isMacOS,
+        ): () =>
+            playerService.skipToPrevious(),
+        const SingleActivator(LogicalKeyboardKey.arrowRight): () {
+          final handler = ref.read(audioHandlerProvider);
+          final pos = handler.position;
+          playerService.seekTo(pos + const Duration(seconds: 5));
+        },
+        const SingleActivator(LogicalKeyboardKey.arrowLeft): () {
+          final handler = ref.read(audioHandlerProvider);
+          final pos = handler.position;
+          final target = pos - const Duration(seconds: 5);
+          playerService.seekTo(target < Duration.zero ? Duration.zero : target);
+        },
+        const SingleActivator(LogicalKeyboardKey.arrowUp): () {
+          final current = ref.read(appSettingsProvider).volume;
+          settingsNotifier.setVolume((current + 0.05).clamp(0.0, 1.0));
+        },
+        const SingleActivator(LogicalKeyboardKey.arrowDown): () {
+          final current = ref.read(appSettingsProvider).volume;
+          settingsNotifier.setVolume((current - 0.05).clamp(0.0, 1.0));
+        },
+      },
+      child: Focus(autofocus: true, child: scaffold),
     );
   }
 }

@@ -4,10 +4,16 @@ import '../../core/audio/player_service.dart';
 import '../../core/models/track.dart';
 import '../../core/providers.dart';
 import '../../core/plugins/source_plugin.dart';
+import '../../core/database/daos/play_history_dao.dart';
 import '../../shared/widgets/cover_art.dart';
 import '../player/now_playing_screen.dart';
 import '../search/search_screen.dart';
 import '../sources/sources_screen.dart';
+
+final _recentlyPlayedProvider = StreamProvider<List<Track>>((ref) {
+  final db = ref.watch(databaseProvider);
+  return PlayHistoryDao(db).watchRecentlyPlayed(limit: 20);
+});
 
 final _browseResultsProvider = FutureProvider.autoDispose<List<SourceResult>>((
   ref,
@@ -104,6 +110,43 @@ class HomeScreen extends ConsumerWidget {
 
           return CustomScrollView(
             slivers: [
+              // ── Recently Played ──
+              Consumer(
+                builder: (context, ref, _) {
+                  final recentAsync = ref.watch(_recentlyPlayedProvider);
+                  final recentTracks = recentAsync.valueOrNull ?? [];
+                  if (recentTracks.isEmpty) return const SliverToBoxAdapter();
+                  return SliverMainAxisGroup(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                          child: Text(
+                            'Recently Played',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 200,
+                          child: ListView.builder(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            scrollDirection: Axis.horizontal,
+                            itemCount: recentTracks.length,
+                            itemBuilder: (context, i) {
+                              final t = recentTracks[i];
+                              return _RecentlyPlayedCard(track: t);
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              // ── Featured ──
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -152,6 +195,52 @@ class HomeScreen extends ConsumerWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _RecentlyPlayedCard extends ConsumerWidget {
+  final Track track;
+  const _RecentlyPlayedCard({required this.track});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final playerService = ref.read(playerServiceProvider);
+    return GestureDetector(
+      onTap: () {
+        playerService.play(track);
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const NowPlayingScreen()));
+      },
+      child: Container(
+        width: 140,
+        margin: const EdgeInsets.only(right: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CoverArt(url: track.albumArtUrl, size: 140, borderRadius: 12),
+            const SizedBox(height: 6),
+            Text(
+              track.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            if (track.artist != null)
+              Text(
+                track.artist!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

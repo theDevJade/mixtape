@@ -20,6 +20,7 @@ class MiniPlayer extends ConsumerWidget {
     final settings = ref.watch(appSettingsProvider);
     final settingsNotifier = ref.read(appSettingsProvider.notifier);
     final playerService = ref.read(playerServiceProvider);
+    final isInLibrary = ref.watch(isInLibraryProvider).valueOrNull ?? false;
 
     if (track == null) return const SizedBox.shrink();
 
@@ -94,6 +95,21 @@ class MiniPlayer extends ConsumerWidget {
                           ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: isInLibrary
+                        ? 'Remove from library'
+                        : 'Add to library',
+                    icon: Icon(
+                      isInLibrary
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      color: isInLibrary
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                      size: 20,
+                    ),
+                    onPressed: () => toggleLibrary(ref),
                   ),
                   IconButton(
                     tooltip: 'Volume',
