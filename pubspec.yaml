@@ -1,0 +1,77 @@
+name: mixtape
+description: "An extremely customizable, open source, and extendable music app."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Navigation
+  go_router: ^14.6.3
+
+  # Audio playback
+  just_audio: ^0.10.4
+  just_audio_background: ^0.0.1-beta.15
+  audio_service: ^0.18.17
+
+  # Local database
+  drift: ^2.26.1
+  drift_flutter: ^0.2.4
+  sqlite3_flutter_libs: ^0.5.31
+
+  # HTTP & networking
+  dio: ^5.8.0+1
+
+  # Local file picking
+  file_picker: ^10.1.7
+
+  # Image caching
+  cached_network_image: ^3.4.1
+
+  # Shared preferences / settings
+  shared_preferences: ^2.5.3
+
+  # JSON serialization
+  json_annotation: ^4.9.0
+
+  # Utilities
+  equatable: ^2.0.7
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  collection: ^1.19.1
+  intl: ^0.20.2
+  url_launcher: ^6.3.1
+  palette_generator: ^0.3.3+4
+  rxdart: ^0.28.0
+  uuid: ^4.5.1
+  crypto: ^3.0.6
+  flutter_web_auth_2: ^4.0.1
+  webview_flutter: ^4.10.0
+  video_player: ^2.9.2
+  dart_discord_presence: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.15
+  riverpod_generator: ^2.6.2
+  drift_dev: ^2.26.1
+  json_serializable: ^6.9.4
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/

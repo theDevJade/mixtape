@@ -1,0 +1,15 @@
+.DS_Store
+.idea/
+*.iml
+
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+.pub-cache/
+build/
+coverage/
+
+**/doc/api/
+**/ios/Flutter/.last_build_id
