@@ -200,6 +200,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
 
     // Pre-resolve the immediately adjacent tracks in the background.
     unawaited(_resolveAtIndex(startIndex + 1, gen: gen));
+    unawaited(_resolveAtIndex(startIndex + 2, gen: gen));
     if (startIndex > 0) unawaited(_resolveAtIndex(startIndex - 1, gen: gen));
   }
 
@@ -224,6 +225,11 @@ class MixtapeAudioHandler extends BaseAudioHandler
       await concat.insert(insertIdx, _rawSource(track));
       unawaited(_resolveAtIndex(insertIdx, gen: _queueGeneration));
     }
+  }
+
+  Future<void> skipToIndex(int index) async {
+    if (index < 0 || index >= _trackQueue.length) return;
+    await _player.seek(Duration.zero, index: index);
   }
 
   // ── AudioHandler overrides ──────────────────────────────────────────────────
@@ -439,10 +445,11 @@ class MixtapeAudioHandler extends BaseAudioHandler
     if (index != null && index < _trackQueue.length) {
       _currentTrack = _trackQueue[index];
       _broadcastMediaItem(_trackQueue[index]);
-      // Eagerly resolve N+1 and N+2 so they're ready before the user reaches them.
+      // Eagerly resolve N+1, N+2, and N+3 so they're ready before the user reaches them.
       final gen = _queueGeneration;
       unawaited(_resolveAtIndex(index + 1, gen: gen));
       unawaited(_resolveAtIndex(index + 2, gen: gen));
+      unawaited(_resolveAtIndex(index + 3, gen: gen));
     }
   }
 

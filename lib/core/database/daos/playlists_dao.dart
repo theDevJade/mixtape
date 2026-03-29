@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database.dart';
@@ -97,5 +99,45 @@ class PlaylistsDao extends DatabaseAccessor<AppDatabase>
           ..where((pt) => pt.playlistId.equals(playlistId))
           ..orderBy([(pt) => OrderingTerm.asc(pt.position)]))
         .get();
+  }
+
+  /// Watches the full [Track] objects for a playlist, ordered by position.
+  Stream<List<Track>> watchPlaylistTracks(String playlistId) {
+    final query =
+        select(playlistTracksTable).join([
+            innerJoin(
+              tracksTable,
+              tracksTable.id.equalsExp(playlistTracksTable.trackId) &
+                  tracksTable.sourcePluginId.equalsExp(
+                    playlistTracksTable.trackSourcePluginId,
+                  ),
+            ),
+          ])
+          ..where(playlistTracksTable.playlistId.equals(playlistId))
+          ..orderBy([OrderingTerm.asc(playlistTracksTable.position)]);
+
+    return query.watch().map(
+      (rows) => rows.map((row) {
+        final r = row.readTable(tracksTable);
+        Map<String, dynamic> metadata = {};
+        try {
+          metadata = jsonDecode(r.sourceMetadataJson) as Map<String, dynamic>;
+        } catch (_) {}
+        return Track(
+          id: r.id,
+          title: r.title,
+          artist: r.artist,
+          album: r.album,
+          albumArtUrl: r.albumArtUrl,
+          duration: r.durationMs != null
+              ? Duration(milliseconds: r.durationMs!)
+              : null,
+          uri: r.uri,
+          sourcePluginId: r.sourcePluginId,
+          sourceMetadata: metadata,
+          addedAt: r.addedAt,
+        );
+      }).toList(),
+    );
   }
 }

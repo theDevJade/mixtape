@@ -12,7 +12,9 @@ import '../../core/plugins/ytdlp/ytdlp_plugin.dart';
 import '../../core/providers.dart';
 import '../../core/models/track.dart';
 import '../../core/audio/player_service.dart';
+import '../../core/database/daos/playlists_dao.dart';
 import '../../core/settings/settings_provider.dart';
+import '../../shared/widgets/cover_art.dart';
 import 'widgets/lyrics_view.dart';
 
 final _showLyricsProvider = StateProvider.autoDispose<bool>((_) => false);
@@ -66,6 +68,11 @@ class NowPlayingScreen extends ConsumerWidget {
             tooltip: showLyrics ? 'Show artwork' : 'Show lyrics',
             onPressed: () =>
                 ref.read(_showLyricsProvider.notifier).state = !showLyrics,
+          ),
+          IconButton(
+            icon: const Icon(Icons.queue_music_rounded, color: Colors.white70),
+            tooltip: 'Queue',
+            onPressed: () => _showQueueSheet(context, ref),
           ),
           IconButton(
             icon: const Icon(Icons.more_vert_rounded),
@@ -533,6 +540,14 @@ class NowPlayingScreen extends ConsumerWidget {
     );
   }
 
+  void _showQueueSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _QueueSheet(ref: ref),
+    );
+  }
+
   void _showTrackOptions(BuildContext context, WidgetRef ref) {
     final track = ref.read(currentTrackProvider);
     if (track == null) return;
@@ -548,7 +563,10 @@ class NowPlayingScreen extends ConsumerWidget {
             ListTile(
               leading: const Icon(Icons.playlist_add_rounded),
               title: const Text('Add to playlist'),
-              onTap: () => Navigator.pop(context),
+              onTap: () {
+                Navigator.pop(context);
+                _showNowPlayingAddToPlaylist(context, ref, track);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.queue_music_rounded),
@@ -559,9 +577,15 @@ class NowPlayingScreen extends ConsumerWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.share_rounded),
-              title: const Text('Share'),
-              onTap: () => Navigator.pop(context),
+              leading: const Icon(Icons.copy_rounded),
+              title: const Text('Copy link'),
+              onTap: () {
+                Navigator.pop(context);
+                Clipboard.setData(ClipboardData(text: track.uri));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Link copied to clipboard')),
+                );
+              },
             ),
           ],
         ),
@@ -689,6 +713,177 @@ class NowPlayingScreen extends ConsumerWidget {
       }
     }
     return null;
+  }
+}
+
+void _showNowPlayingAddToPlaylist(
+  BuildContext context,
+  WidgetRef ref,
+  Track track,
+) {
+  showModalBottomSheet(
+    context: context,
+    builder: (_) => _NowPlayingAddToPlaylistSheet(track: track, ref: ref),
+  );
+}
+
+class _NowPlayingAddToPlaylistSheet extends ConsumerWidget {
+  final Track track;
+  final WidgetRef ref;
+  const _NowPlayingAddToPlaylistSheet({required this.track, required this.ref});
+
+  @override
+  Widget build(BuildContext context, WidgetRef widgetRef) {
+    final playlistsAsync = widgetRef.watch(
+      StreamProvider<List<dynamic>>((r) {
+        final db = r.watch(databaseProvider);
+        return PlaylistsDao(db).watchAllPlaylists();
+      }),
+    );
+    final playlists = playlistsAsync.valueOrNull ?? [];
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              'Add to playlist',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          const Divider(height: 1),
+          if (playlists.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No playlists yet.'),
+            )
+          else
+            ...playlists.map(
+              (p) => ListTile(
+                title: Text(
+                  p.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () async {
+                  Navigator.of(context).pop();
+                  final db = widgetRef.read(databaseProvider);
+                  final dao = PlaylistsDao(db);
+                  final existing = await dao.getPlaylistTracks(p.id);
+                  await dao.addTrackToPlaylist(p.id, track, existing.length);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Added to ${p.name}')),
+                    );
+                  }
+                },
+              ),
+            ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _QueueSheet extends ConsumerWidget {
+  final WidgetRef ref;
+  const _QueueSheet({required this.ref});
+
+  @override
+  Widget build(BuildContext context, WidgetRef widgetRef) {
+    final queue = widgetRef.watch(queueProvider);
+    final currentIndex = widgetRef.watch(currentIndexProvider).valueOrNull;
+    final playerService = widgetRef.read(playerServiceProvider);
+
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.55,
+      minChildSize: 0.3,
+      maxChildSize: 0.92,
+      builder: (_, scrollController) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              children: [
+                Text('Up next', style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                Text(
+                  '${queue.length} track${queue.length == 1 ? '' : 's'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: queue.isEmpty
+                ? const Center(child: Text('Queue is empty'))
+                : ListView.builder(
+                    controller: scrollController,
+                    itemCount: queue.length,
+                    itemBuilder: (context, i) {
+                      final t = queue[i];
+                      final isCurrent = i == currentIndex;
+                      return ListTile(
+                        selected: isCurrent,
+                        leading: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            CoverArt(
+                              url: t.albumArtUrl,
+                              size: 40,
+                              borderRadius: 6,
+                            ),
+                            if (isCurrent)
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Colors.black45,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: const Icon(
+                                  Icons.volume_up_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                          ],
+                        ),
+                        title: Text(
+                          t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: isCurrent
+                              ? TextStyle(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                )
+                              : null,
+                        ),
+                        subtitle: t.artist != null
+                            ? Text(
+                                t.artist!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : null,
+                        onTap: () async {
+                          Navigator.pop(context);
+                          await playerService.skipToIndex(i);
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

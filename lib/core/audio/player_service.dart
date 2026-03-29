@@ -37,16 +37,10 @@ final positionDataProvider = StreamProvider<PositionData>((ref) {
     (pos, buf, dur) => PositionData(
       position: pos,
       bufferedPosition: buf,
-      // Temporary hack: some streams report a doubled duration.
-      totalDuration: _halveDuration(dur ?? Duration.zero),
+      totalDuration: dur ?? Duration.zero,
     ),
   );
 });
-
-Duration _halveDuration(Duration value) {
-  if (value <= Duration.zero) return Duration.zero;
-  return Duration(milliseconds: value.inMilliseconds ~/ 2);
-}
 
 // ── Playback state ──────────────────────────────────────────────────────────
 
@@ -62,6 +56,10 @@ final queueProvider = StateProvider<List<Track>>((ref) => []);
 final shuffleProvider = StateProvider<bool>((ref) => false);
 
 final repeatModeProvider = StateProvider<LoopMode>((ref) => LoopMode.off);
+
+final currentIndexProvider = StreamProvider<int?>((ref) {
+  return ref.watch(audioHandlerProvider).player.currentIndexStream;
+});
 
 /// `true` while the starting track of a new play request is being resolved.
 final isResolvingProvider = StreamProvider<bool>((ref) {
@@ -117,6 +115,8 @@ class PlayerService {
     _ref.read(queueProvider.notifier).state = current;
     await _handler.playNext(track);
   }
+
+  Future<void> skipToIndex(int index) => _handler.skipToIndex(index);
 
   Future<void> toggleShuffle() async {
     final current = _ref.read(shuffleProvider);
@@ -266,6 +266,13 @@ class PlayerService {
 
 final playerServiceProvider = Provider<PlayerService>((ref) {
   final handler = ref.watch(audioHandlerProvider);
+  // Keep currentTrackProvider in sync when just_audio auto-advances the queue.
+  final sub = handler.player.currentIndexStream.listen((index) {
+    if (index != null && index < handler.trackQueue.length) {
+      ref.read(currentTrackProvider.notifier).state = handler.trackQueue[index];
+    }
+  });
+  ref.onDispose(sub.cancel);
   return PlayerService(handler, ref);
 });
 

@@ -57,11 +57,35 @@ class AudioFileCache {
     return sha1.convert(utf8.encode(cacheKey)).toString();
   }
 
-  String _cacheFileName(String cacheKey, String sourceUri) {
-    final hash = _hashKey(cacheKey);
-    final ext = p.extension(Uri.tryParse(sourceUri)?.path ?? '');
-    final safeExt = ext.length <= 8 ? ext : '';
-    return '$hash$safeExt';
+  /// Maps a MIME type string to a file extension including the dot.
+  String? _extFromMime(String? mime) {
+    if (mime == null) return null;
+    final base = mime.split(';').first.trim().toLowerCase();
+    return switch (base) {
+      'audio/mpeg' || 'audio/mp3' => '.mp3',
+      'audio/mp4' || 'audio/x-m4a' => '.m4a',
+      'video/mp4' => '.m4a', // audio-only mp4 container
+      'audio/webm' || 'video/webm' => '.webm',
+      'audio/ogg' || 'application/ogg' => '.ogg',
+      'audio/flac' || 'audio/x-flac' => '.flac',
+      'audio/aac' || 'audio/x-aac' => '.aac',
+      'audio/wav' || 'audio/x-wav' => '.wav',
+      'audio/opus' => '.opus',
+      _ => null,
+    };
+  }
+
+  /// Best-effort extension guess before making the HTTP request.
+  /// Checks the `mime` query parameter (present in YouTube CDN URLs),
+  /// then falls back to the URL path extension.
+  String? _extHintFromUri(Uri uri) {
+    final mimeParam = uri.queryParameters['mime'];
+    if (mimeParam != null && mimeParam.isNotEmpty) {
+      final ext = _extFromMime(Uri.decodeComponent(mimeParam));
+      if (ext != null) return ext;
+    }
+    final pathExt = p.extension(uri.path);
+    return (pathExt.isNotEmpty && pathExt.length <= 8) ? pathExt : null;
   }
 
   int? _expectedBytesFromUri(Uri uri) {
@@ -123,6 +147,18 @@ class AudioFileCache {
     final name = entry['fileName'] as String?;
     if (name == null || name.isEmpty) return null;
 
+    // Evict legacy entries that were cached without an extension — they cannot
+    // be reliably played back because the decoder can't identify the format.
+    if (p.extension(name).isEmpty) {
+      index.remove(cacheKey);
+      await _writeIndex(index);
+      // Also delete the orphan file if it exists.
+      final dir = await _cacheDir();
+      final orphan = File(p.join(dir.path, name));
+      if (await orphan.exists()) await orphan.delete();
+      return null;
+    }
+
     final dir = await _cacheDir();
     final file = File(p.join(dir.path, name));
     if (!await file.exists()) {
@@ -158,21 +194,10 @@ class AudioFileCache {
       if (uri == null || !uri.hasScheme) return;
 
       final dir = await _cacheDir();
-      final fileName = _cacheFileName(cacheKey, sourceUri);
-      final target = File(p.join(dir.path, fileName));
-      final temp = File('${target.path}.part');
-
-      final expectedBytesHint = _expectedBytesFromUri(uri);
-      final recovered = await _promoteTempToCache(
-        cacheKey: cacheKey,
-        sourceUri: sourceUri,
-        fileName: fileName,
-        temp: temp,
-        target: target,
-        expectedBytes: expectedBytesHint,
-        allowUnknownExpected: false,
-      );
-      if (recovered) return;
+      final hash = _hashKey(cacheKey);
+      // Use a fixed .part extension for the temp file; the final extension is
+      // determined from the HTTP response Content-Type below.
+      final temp = File(p.join(dir.path, '$hash.part'));
 
       if (await temp.exists()) {
         await temp.delete();
@@ -187,9 +212,23 @@ class AudioFileCache {
           return;
         }
 
+        // Determine the file extension from Content-Type first, then fall back
+        // to a pre-request hint derived from the URL (e.g. YouTube's mime= param).
+        final contentTypeMime = response.headers.contentType?.mimeType;
+        final ext = _extFromMime(contentTypeMime) ?? _extHintFromUri(uri) ?? '';
+
+        if (ext.isEmpty) {
+          // Cannot determine format — skip caching rather than storing an
+          // unidentifiable file that will fail on playback.
+          return;
+        }
+
+        final fileName = '$hash$ext';
+        final target = File(p.join(dir.path, fileName));
+
         final expectedBytes = response.contentLength > 0
             ? response.contentLength
-            : expectedBytesHint;
+            : _expectedBytesFromUri(uri);
 
         final sink = temp.openWrite();
         try {

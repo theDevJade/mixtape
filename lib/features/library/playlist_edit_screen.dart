@@ -315,8 +315,8 @@ class PlaylistHeaderImage extends ConsumerWidget {
       ),
       child: Center(
         child: Icon(
-          Icons.album_rounded,
-          size: 64,
+          Icons.music_note_rounded,
+          size: height * 0.5,
           color: Theme.of(
             context,
           ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
