@@ -84,9 +84,11 @@ class MixtapeAudioHandler extends BaseAudioHandler
     bool crossfadeEnabled,
     int crossfadeDurationSeconds,
   ) {
-    _player.playbackEventStream.map(_transformEvent).pipe(playbackState);
-    unawaited(_player.setVolume(_volume.clamp(0.0, 1.0)));
+    // Use .listen() instead of .pipe() so we can also manually push
+    // PlaybackState updates (e.g. on track change) without hitting
+    // "Bad state: You cannot add items while items are being added".
     _player.playbackEventStream.listen((event) {
+      playbackState.add(_transformEvent(event));
       _log(
         '[PLAYER] event state=${_player.processingState.name} '
         'index=${event.currentIndex} '
@@ -95,6 +97,7 @@ class MixtapeAudioHandler extends BaseAudioHandler
         'duration=${event.duration?.inMilliseconds ?? -1}ms',
       );
     });
+    unawaited(_player.setVolume(_volume.clamp(0.0, 1.0)));
     _player.currentIndexStream.listen(_onIndexChanged);
     unawaited(
       setCrossfade(
