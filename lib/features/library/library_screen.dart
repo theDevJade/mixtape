@@ -219,11 +219,15 @@ class _PlaylistsTab extends ConsumerWidget {
                   itemBuilder: (context, i) {
                     final p = playlists[i];
                     return ListTile(
-                      leading: PlaylistHeaderImage(
-                        playlistId: p.id,
-                        coverArtUrl: p.coverArtUrl,
+                      leading: SizedBox(
+                        width: 56,
                         height: 56,
-                        borderRadius: BorderRadius.circular(8),
+                        child: PlaylistHeaderImage(
+                          playlistId: p.id,
+                          coverArtUrl: p.coverArtUrl,
+                          height: 56,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                       title: Text(
                         p.name,
