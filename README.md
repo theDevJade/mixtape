@@ -26,6 +26,95 @@ Open source music player built with Flutter. Mix YouTube, SoundCloud, Spotify pl
 
 ---
 
+## Installation
+
+### Pre-built binaries
+
+Download the latest release for your platform from the [Releases](../../releases) page.
+
+**Linux:** Before running the binary, install the required system libraries (see [Linux dependencies](#linux-dependencies) below).
+
+### Building from source
+
+See [Running](#running).
+
+---
+
+## Linux dependencies
+
+The pre-built binary and building from source both require a few system libraries.
+
+### Debian / Ubuntu
+
+```bash
+sudo apt install libwebkit2gtk-4.1-0 libmpv-dev
+```
+
+### Fedora
+
+```bash
+sudo dnf install webkit2gtk4.1 mpv-libs
+```
+
+### Running the binary
+
+Due to a locale issue with libmpv, launch the app like this:
+
+```bash
+LC_NUMERIC=C ./mixtape
+```
+
+If you're on Wayland and the app doesn't open, try:
+
+```bash
+LC_NUMERIC=C GDK_BACKEND=x11 ./mixtape
+```
+
+---
+
+## Running from source
+
+### Prerequisites
+
+- [Flutter](https://docs.flutter.dev/get-started/install/linux) SDK
+- System libraries listed in [Linux dependencies](#linux-dependencies) above (Linux only)
+
+### Linux: additional build dependencies
+
+These are required to compile the app from source on Linux.
+
+**Debian / Ubuntu:**
+```bash
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libmpv-dev
+```
+
+**Fedora:**
+```bash
+sudo dnf install webkit2gtk4.1-devel gtk3-devel mpv-libs glib2-devel libsoup3-devel
+```
+
+### Running
+
+```bash
+flutter pub get
+flutter run          # macOS / Windows
+LC_NUMERIC=C flutter run   # Linux
+```
+
+**Fedora:** If `pkg-config` can't find webkit2gtk during build, prefix the command with:
+
+```bash
+PKG_CONFIG_PATH=/usr/lib64/pkgconfig LC_NUMERIC=C flutter run
+```
+
+After changing models or database schema:
+
+```bash
+dart run build_runner build --delete-conflicting-outputs
+```
+
+---
+
 ## Sources
 
 ### Spotify
@@ -77,7 +166,7 @@ Search and browse YouTube using the YouTube Data API v3. You can also point it a
 Uses a local `yt-dlp` binary to grab real audio stream URLs from YouTube (and [hundreds of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md)). This is how you actually play YouTube in Mixtape on desktop.
 
 **Requirements:**
-- `yt-dlp` on your `PATH` (`brew install yt-dlp`, `pip install yt-dlp`, etc.)
+- `yt-dlp` on your `PATH` (`brew install yt-dlp`, `pip install yt-dlp`, `sudo dnf install yt-dlp`, etc.)
 - Desktop only (macOS · Windows · Linux)
 
 **Setup:**
@@ -126,31 +215,15 @@ Shows your current track in your Discord status on macOS, Windows, and Linux.
 
 ---
 
-## Running
-
-```bash
-flutter pub get
-flutter run
-```
-
-After changing models/database schema:
-
-```bash
-dart run build_runner build --delete-conflicting-outputs
-```
-
----
-
 ## Stack
 
 | | |
 |---|---|
 | State | `flutter_riverpod` |
 | Navigation | `go_router` |
-| Audio | `just_audio` + `audio_service` |
+| Audio | `mediakit` |
 | Database | `drift` (SQLite) |
 | HTTP | `dio` |
 | Discord | `dart_discord_presence` |
 | Lyrics | [lrclib.net](https://lrclib.net) |
 | OAuth | `flutter_web_auth_2` |
-

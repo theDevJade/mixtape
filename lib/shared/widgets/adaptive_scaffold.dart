@@ -137,10 +137,6 @@ class _AdaptiveScaffoldState extends ConsumerState<AdaptiveScaffold> {
 
     return CallbackShortcuts(
       bindings: {
-        const SingleActivator(LogicalKeyboardKey.space): () {
-          final playing = ref.read(isPlayingProvider).valueOrNull ?? false;
-          playing ? playerService.pause() : playerService.resume();
-        },
         SingleActivator(
           LogicalKeyboardKey.arrowRight,
           meta: Platform.isMacOS,
@@ -173,7 +169,20 @@ class _AdaptiveScaffoldState extends ConsumerState<AdaptiveScaffold> {
           settingsNotifier.setVolume((current - 0.05).clamp(0.0, 1.0));
         },
       },
-      child: Focus(autofocus: true, child: scaffold),
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (node, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.space &&
+              FocusManager.instance.primaryFocus == node) {
+            final playing = ref.read(isPlayingProvider).valueOrNull ?? false;
+            playing ? playerService.pause() : playerService.resume();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: scaffold,
+      ),
     );
   }
 }
