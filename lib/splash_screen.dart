@@ -44,7 +44,7 @@ class SplashScreen extends StatelessWidget {
               const SizedBox(height: 16),
               ValueListenableBuilder<String>(
                 valueListenable: splashStatus,
-                builder: (_, status, __) => Text(
+                builder: (_, status, _) => Text(
                   status,
                   style: TextStyle(
                     fontSize: 13,
