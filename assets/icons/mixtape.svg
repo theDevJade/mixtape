@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Cassette body -->
+  <rect x="56" y="120" width="400" height="272" rx="24" ry="24" fill="#6C63FF"/>
+  <rect x="56" y="120" width="400" height="272" rx="24" ry="24" fill="none" stroke="#4A42CC" stroke-width="6"/>
+
+  <!-- Label area -->
+  <rect x="96" y="152" width="320" height="140" rx="8" ry="8" fill="#F5F0FF"/>
+
+  <!-- Label lines -->
+  <line x1="120" y1="190" x2="392" y2="190" stroke="#C4B8FF" stroke-width="2"/>
+  <line x1="120" y1="210" x2="392" y2="210" stroke="#C4B8FF" stroke-width="2"/>
+  <line x1="120" y1="230" x2="392" y2="230" stroke="#C4B8FF" stroke-width="2"/>
+  <line x1="120" y1="250" x2="340" y2="250" stroke="#C4B8FF" stroke-width="2"/>
+
+  <!-- Label text -->
+  <text x="256" y="178" text-anchor="middle" font-family="sans-serif" font-weight="bold" font-size="22" fill="#4A42CC">MIXTAPE</text>
+
+  <!-- Left reel hub -->
+  <circle cx="192" cy="220" r="36" fill="none" stroke="#4A42CC" stroke-width="3"/>
+  <circle cx="192" cy="220" r="14" fill="#4A42CC"/>
+  <circle cx="192" cy="220" r="6" fill="#F5F0FF"/>
+
+  <!-- Right reel hub -->
+  <circle cx="320" cy="220" r="36" fill="none" stroke="#4A42CC" stroke-width="3"/>
+  <circle cx="320" cy="220" r="14" fill="#4A42CC"/>
+  <circle cx="320" cy="220" r="6" fill="#F5F0FF"/>
+
+  <!-- Tape window -->
+  <rect x="136" y="312" width="240" height="52" rx="26" ry="26" fill="#3D35A8"/>
+  <rect x="152" y="320" width="208" height="36" rx="18" ry="18" fill="#2A2470"/>
+
+  <!-- Tape spools in window -->
+  <circle cx="196" cy="338" r="12" fill="none" stroke="#6C63FF" stroke-width="2"/>
+  <circle cx="196" cy="338" r="4" fill="#6C63FF"/>
+  <circle cx="316" cy="338" r="12" fill="none" stroke="#6C63FF" stroke-width="2"/>
+  <circle cx="316" cy="338" r="4" fill="#6C63FF"/>
+
+  <!-- Tape between spools -->
+  <line x1="208" y1="338" x2="304" y2="338" stroke="#6C63FF" stroke-width="1.5"/>
+
+  <!-- Bottom screw holes -->
+  <circle cx="104" cy="360" r="6" fill="#4A42CC"/>
+  <circle cx="104" cy="360" r="2.5" fill="#3D35A8"/>
+  <circle cx="408" cy="360" r="6" fill="#4A42CC"/>
+  <circle cx="408" cy="360" r="2.5" fill="#3D35A8"/>
+
+  <!-- Top screw holes -->
+  <circle cx="104" cy="148" r="6" fill="#4A42CC"/>
+  <circle cx="104" cy="148" r="2.5" fill="#3D35A8"/>
+  <circle cx="408" cy="148" r="6" fill="#4A42CC"/>
+  <circle cx="408" cy="148" r="2.5" fill="#3D35A8"/>
+</svg>

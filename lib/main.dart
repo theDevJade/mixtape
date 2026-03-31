@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'splash_screen.dart';
 import 'core/audio/audio_handler.dart';
 import 'core/audio/player_service.dart';
 import 'core/database/database.dart';
@@ -24,7 +25,6 @@ import 'core/settings/settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
 
   final previousOnError = FlutterError.onError;
   FlutterError.onError = (details) {
@@ -42,8 +42,17 @@ Future<void> main() async {
     return false;
   };
 
+  // Show splash screen immediately while heavy init happens.
+  runApp(const SplashScreen());
+
+  // Heavy initialization (MediaKit/libmpv, database, plugins, audio service).
+  splashStatus.value = 'Initializing media engine…';
+  MediaKit.ensureInitialized();
+
+  splashStatus.value = 'Opening database…';
   final db = AppDatabase();
 
+  splashStatus.value = 'Registering plugins…';
   final registry = PluginRegistry();
   registry.register(LocalFilesPlugin());
   registry.register(JamendoPlugin());
@@ -80,6 +89,7 @@ Future<void> main() async {
         );
   }
 
+  splashStatus.value = 'Initializing plugins…';
   await registry.initializeAll(configs);
 
   final cacheAudioFiles =
@@ -90,6 +100,7 @@ Future<void> main() async {
   final initialCrossfadeEnabled = prefs.getBool('crossfade_enabled') ?? false;
   final initialCrossfadeSeconds = prefs.getInt('crossfade_duration') ?? 0;
 
+  splashStatus.value = 'Starting audio service…';
   final audioHandler = await AudioService.init(
     builder: () => MixtapeAudioHandler(
       registry,
