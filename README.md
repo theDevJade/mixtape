@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/theDevJade/mixtape/actions/workflows/build.yml/badge.svg)](https://github.com/theDevJade/mixtape/actions/workflows/build.yml)
 [![COPR](https://copr.fedorainfracloud.org/coprs/mixtape/mixtape/package/mixtape/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/mixtape/mixtape/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 Open source music player built with Flutter. Mix YouTube, SoundCloud, Spotify playlists, local files, and more in the same queue.
 

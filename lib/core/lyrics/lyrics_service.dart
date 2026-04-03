@@ -91,25 +91,38 @@ class LyricsService {
 
       if (synced == null && plain == null) {
         dev.log('/get returned no lyrics content', name: _tag);
-        return null;
+        return _store(key, null);
       }
 
       dev.log(
         '/get hit — synced=${synced != null} plain=${plain != null}',
         name: _tag,
       );
-      return LyricsResult(
-        syncedLines: synced != null ? _parseLrc(synced) : [],
-        plainText: plain,
+      return _store(
+        key,
+        LyricsResult(
+          syncedLines: synced != null ? _parseLrc(synced) : [],
+          plainText: plain,
+        ),
       );
     } on DioException catch (e) {
       if (e.response?.statusCode == 404) {
         dev.log('/get 404 — falling back to /search', name: _tag);
-        return _fetchViaSearch(cleanTitle, cleanArtist);
+        return _store(key, await _fetchViaSearch(cleanTitle, cleanArtist));
       }
       dev.log('fetch error: $e', name: _tag);
       rethrow;
     }
+  }
+
+  /// Write [result] to the cache under [key], evicting the oldest entry when
+  /// the cache exceeds [_maxCache] entries.  Returns [result] for chaining.
+  static LyricsResult? _store(String key, LyricsResult? result) {
+    if (_cache.length >= _maxCache) {
+      _cache.remove(_cache.keys.first);
+    }
+    _cache[key] = result;
+    return result;
   }
 
   /// Returns true for generic streaming-platform names that aren't real album names.
