@@ -153,6 +153,15 @@ class VrOverlayService {
     _bridge.setWidth(_handle, _earbudSize);
   }
 
+  /// Update the ear side and immediately re-anchor the earbud if in resting
+  /// mode.  Safe to call at any time (no-op if not running).
+  void updateEarSide(EarSide side) {
+    earSide = side;
+    if (_running && _state == OverlayState.earbud) {
+      _applyEarbudTransform();
+    }
+  }
+
   /// Grab/release the panel programmatically (e.g. from a debug tap on the
   /// earbud widget when not in VR).
   void toggleState() {

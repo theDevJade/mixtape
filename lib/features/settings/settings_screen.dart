@@ -364,6 +364,34 @@ class SettingsScreen extends ConsumerWidget {
               ),
           ],
 
+          // ── SteamVR ───────────────────────────────────────────────────────
+          if (!Platform.isAndroid && !Platform.isIOS) ...[
+            _SectionHeader('SteamVR Overlay'),
+            ListTile(
+              leading: const Icon(Icons.headset_rounded),
+              title: const Text('Earbud ear side'),
+              subtitle: const Text(
+                'Which ear the overlay rests at when not grabbed',
+              ),
+              trailing: SegmentedButton<bool>(
+                selected: {settings.vrEarRight},
+                onSelectionChanged: (s) => notifier.setVrEarRight(s.first),
+                segments: const [
+                  ButtonSegment(
+                    value: false,
+                    icon: Icon(Icons.arrow_back_rounded),
+                    label: Text('Left'),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    icon: Icon(Icons.arrow_forward_rounded),
+                    label: Text('Right'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
           // ── yt-dlp ────────────────────────────────────────────────────────
           if (!Platform.isAndroid && !Platform.isIOS) ...[
             _SectionHeader('yt-dlp Stream Resolver'),

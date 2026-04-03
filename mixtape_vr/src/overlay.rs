@@ -70,7 +70,7 @@ const VR_EVENT_MOUSE_DOWN:     u32 = 301;
 const VR_EVENT_MOUSE_UP:       u32 = 302;
 
 // k_EButton_Grip = 2
-const K_BUTTON_GRIP: u64 = 1 << 2;
+const K_BUTTON_GRIP: u32 = 1 << 2;
 
 // ─── Public surface ─────────────────────────────────────────────────────────
 
@@ -199,7 +199,7 @@ pub unsafe fn set_input_method_none(handle: u64) {
 /// `hand`: 0 = left, 1 = right.
 pub unsafe fn get_controller_index(hand: u32) -> u32 {
     let st = system_table();
-    if st.is_null() { return sys::k_unTrackedDeviceIndexInvalid; }
+    if st.is_null() { return sys::k_unTrackedDeviceIndexInvalid as u32; }
     let role = if hand == 0 {
         sys::ETrackedControllerRole_TrackedControllerRole_LeftHand
     } else {
@@ -208,7 +208,7 @@ pub unsafe fn get_controller_index(hand: u32) -> u32 {
     if let Some(f) = (*st).GetTrackedDeviceIndexForControllerRole {
         f(role)
     } else {
-        sys::k_unTrackedDeviceIndexInvalid
+        sys::k_unTrackedDeviceIndexInvalid as u32
     }
 }
 
@@ -256,197 +256,6 @@ pub unsafe fn poll_event(
     *out_device_index = ev.trackedDeviceIndex;
 
     // Mouse events carry UV coords; grip events carry zero.
-    let mouse = ev.data.mouse;
-    *out_x = mouse.x;
-    *out_y = mouse.y;
-
-    1
-}
-
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/// Return the IVROverlay function-pointer table via `VR_GetGenericInterface`.
-///
-/// In openvr_sys 2.x there is no `VROverlay()` convenience wrapper; the
-/// interface pointer must be fetched through `VR_GetGenericInterface` using
-/// the versioned string constant `IVROverlay_Version`.
-#[inline]
-unsafe fn overlay_table() -> *mut sys::VR_IVROverlay_FnTable {
-    let mut err = sys::EVRInitError_VRInitError_None;
-    let iface = sys::VR_GetGenericInterface(
-        sys::IVROverlay_Version.as_ptr() as *const std::os::raw::c_char,
-        &mut err,
-    );
-    iface as *mut sys::VR_IVROverlay_FnTable
-}
-
-/// Convert a raw 12-element `f32` slice (row-major 3×4) into
-/// `HmdMatrix34_t { m: [[f32; 4]; 3] }`.
-unsafe fn to_hmd_matrix(matrix: *const f32) -> sys::HmdMatrix34_t {
-    let s = std::slice::from_raw_parts(matrix, 12);
-    sys::HmdMatrix34_t {
-        m: [
-            [s[0], s[1], s[2],  s[3]],
-            [s[4], s[5], s[6],  s[7]],
-            [s[8], s[9], s[10], s[11]],
-        ],
-    }
-}
-
-// ─── Public surface ─────────────────────────────────────────────────────────
-
-/// Initialise OpenVR as an overlay application. Returns 0 on success.
-pub fn init() -> i32 {
-    let mut err = sys::EVRInitError_VRInitError_None;
-    unsafe {
-        sys::VR_InitInternal(&mut err, sys::EVRApplicationType_VRApplication_Overlay);
-    }
-    if err == sys::EVRInitError_VRInitError_None {
-        0
-    } else {
-        err as i32
-    }
-}
-
-/// Shut down OpenVR.
-pub fn shutdown() {
-    unsafe { sys::VR_ShutdownInternal() }
-}
-
-/// Create an overlay identified by `key` / `name`.
-///
-/// Writes the handle to `*out_handle` on success (returns 0).
-pub unsafe fn create_overlay(
-    key: *const c_char,
-    name: *const c_char,
-    out_handle: *mut u64,
-) -> i32 {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return -1;
-    }
-    let create = match (*ot).CreateOverlay {
-        Some(f) => f,
-        None => return -1,
-    };
-    let err = create(key as *mut _, name as *mut _, out_handle);
-    if err == 0 {
-        0
-    } else {
-        err as i32
-    }
-}
-
-/// Submit a raw RGBA8 CPU buffer as the overlay texture.
-pub unsafe fn set_overlay_raw(handle: u64, rgba: *const u8, width: u32, height: u32) {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return;
-    }
-    if let Some(f) = (*ot).SetOverlayRaw {
-        f(handle, rgba as *mut std::os::raw::c_void, width, height, 4);
-    }
-}
-
-/// Set the overlay physical width in metres.
-pub unsafe fn set_overlay_width_meters(handle: u64, meters: f32) {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return;
-    }
-    if let Some(f) = (*ot).SetOverlayWidthInMeters {
-        f(handle, meters);
-    }
-}
-
-/// Make the overlay visible.
-pub unsafe fn show_overlay(handle: u64) {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return;
-    }
-    if let Some(f) = (*ot).ShowOverlay {
-        f(handle);
-    }
-}
-
-/// Hide the overlay.
-pub unsafe fn hide_overlay(handle: u64) {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return;
-    }
-    if let Some(f) = (*ot).HideOverlay {
-        f(handle);
-    }
-}
-
-/// Anchor the overlay transform to a tracked device (HMD = 0, or controller).
-pub unsafe fn set_transform_tracked_device(handle: u64, device_index: u32, matrix: *const f32) {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return;
-    }
-    if let Some(f) = (*ot).SetOverlayTransformTrackedDeviceRelative {
-        let mut m = to_hmd_matrix(matrix);
-        f(handle, device_index, &mut m as *mut _);
-    }
-}
-
-/// Enable laser-pointer mouse input for the overlay.
-pub unsafe fn set_input_method_mouse(handle: u64) {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return;
-    }
-    if let Some(f) = (*ot).SetOverlayInputMethod {
-        f(handle, sys::VROverlayInputMethod_Mouse);
-    }
-}
-
-/// Drain one event from the overlay event queue.
-///
-/// Returns 1 if an event was dequeued, 0 when the queue is empty.
-pub unsafe fn poll_event(
-    handle: u64,
-    out_event_type: *mut u32,
-    out_device_index: *mut u32,
-    out_x: *mut f32,
-    out_y: *mut f32,
-) -> i32 {
-    let ot = overlay_table();
-    if ot.is_null() {
-        return 0;
-    }
-    let poll = match (*ot).PollNextOverlayEvent {
-        Some(f) => f,
-        None => return 0,
-    };
-
-    let mut ev = std::mem::zeroed::<sys::VREvent_t>();
-    let ev_size = std::mem::size_of::<sys::VREvent_t>() as u32;
-
-    if !poll(handle, &mut ev, ev_size) {
-        return 0;
-    }
-
-    // Classify the event type for the Dart side.
-    // EVREventType values relevant to overlays:
-    //   VREvent_MouseMove       = 300
-    //   VREvent_MouseButtonDown = 301
-    //   VREvent_MouseButtonUp   = 302
-    let mapped_type: u32 = match ev.eventType {
-        300 => 0, // hover / mouse-move
-        301 => 1, // button down
-        302 => 2, // button up
-        _   => 0,
-    };
-
-    *out_event_type   = mapped_type;
-    *out_device_index = ev.trackedDeviceIndex;
-
-    // The mouse sub-union (valid for event types 300–302).
     let mouse = ev.data.mouse;
     *out_x = mouse.x;
     *out_y = mouse.y;

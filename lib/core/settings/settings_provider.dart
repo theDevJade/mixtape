@@ -36,6 +36,8 @@ class AppSettings {
   final bool useArtworkOnPlayerButtons;
   final bool rearrangePlayerControls;
   final bool showYoutubeVideoInPlayer;
+  // SteamVR overlay
+  final bool vrEarRight;
 
   const AppSettings({
     this.brightness = Brightness.dark,
@@ -58,6 +60,7 @@ class AppSettings {
     this.useArtworkOnPlayerButtons = false,
     this.rearrangePlayerControls = false,
     this.showYoutubeVideoInPlayer = false,
+    this.vrEarRight = true,
   });
 
   AppSettings copyWith({
@@ -82,6 +85,7 @@ class AppSettings {
     bool? useArtworkOnPlayerButtons,
     bool? rearrangePlayerControls,
     bool? showYoutubeVideoInPlayer,
+    bool? vrEarRight,
   }) {
     return AppSettings(
       brightness: brightness ?? this.brightness,
@@ -112,6 +116,7 @@ class AppSettings {
           rearrangePlayerControls ?? this.rearrangePlayerControls,
       showYoutubeVideoInPlayer:
           showYoutubeVideoInPlayer ?? this.showYoutubeVideoInPlayer,
+      vrEarRight: vrEarRight ?? this.vrEarRight,
     );
   }
 }
@@ -141,6 +146,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   static const _keyArtworkButtons = 'use_artwork_on_player_buttons';
   static const _keyRearrangeControls = 'rearrange_player_controls';
   static const _keyShowYoutubeVideoInPlayer = 'show_youtube_video_in_player';
+  static const _keyVrEarRight = 'vr_ear_right';
 
   late SharedPreferences _prefs;
 
@@ -188,6 +194,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       rearrangePlayerControls: _prefs.getBool(_keyRearrangeControls) ?? false,
       showYoutubeVideoInPlayer:
           _prefs.getBool(_keyShowYoutubeVideoInPlayer) ?? false,
+      vrEarRight: _prefs.getBool(_keyVrEarRight) ?? true,
     );
   }
 
@@ -297,6 +304,11 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   Future<void> setShowYoutubeVideoInPlayer(bool v) async {
     state = state.copyWith(showYoutubeVideoInPlayer: v);
     await _prefs.setBool(_keyShowYoutubeVideoInPlayer, v);
+  }
+
+  Future<void> setVrEarRight(bool v) async {
+    state = state.copyWith(vrEarRight: v);
+    await _prefs.setBool(_keyVrEarRight, v);
   }
 }
 
