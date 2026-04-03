@@ -241,6 +241,7 @@
 				33CC110E2044A8840003C045 /* Bundle Framework */,
 				3399D490228B24CF009A79C7 /* ShellScript */,
 				7EC8E9EBD91219C71548077C /* [CP] Embed Pods Frameworks */,
+				C7486DDCDCAFE756635DE8F8 /* Build Rust mixtape_vr */,
 			);
 			buildRules = (
 			);
@@ -421,6 +422,24 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		C7486DDCDCAFE756635DE8F8 /* Build Rust mixtape_vr */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust mixtape_vr";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nCRATE_DIR=\"${SRCROOT}/../mixtape_vr\"\ncargo build --release --features steamvr --manifest-path \"${CRATE_DIR}/Cargo.toml\"\nDYLIB_SRC=\"${CRATE_DIR}/target/release/libmixtape_vr.dylib\"\nDEST=\"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/libmixtape_vr.dylib\"\nmkdir -p \"${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\ncp \"${DYLIB_SRC}\" \"${DEST}\"\ninstall_name_tool -id \"@rpath/libmixtape_vr.dylib\" \"${DEST}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

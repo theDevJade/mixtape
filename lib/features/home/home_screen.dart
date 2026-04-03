@@ -15,9 +15,7 @@ final _recentlyPlayedProvider = StreamProvider<List<Track>>((ref) {
   return PlayHistoryDao(db).watchRecentlyPlayed(limit: 20);
 });
 
-final _browseResultsProvider = FutureProvider.autoDispose<List<SourceResult>>((
-  ref,
-) async {
+final _browseResultsProvider = FutureProvider<List<SourceResult>>((ref) async {
   final registry = ref.watch(pluginRegistryProvider);
   final plugins = registry.pluginsWithCapability(PluginCapability.browse);
   if (plugins.isEmpty) return [];

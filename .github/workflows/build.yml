@@ -147,6 +147,23 @@ jobs:
             libgtk-3-dev liblzma-dev libstdc++-12-dev \
             libmpv-dev libwebkit2gtk-4.1-dev
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            mixtape_vr/target
+          key: linux-cargo-${{ hashFiles('mixtape_vr/Cargo.lock') }}
+          restore-keys: linux-cargo-
+
+      - name: Build Rust VR bridge (Linux)
+        working-directory: mixtape_vr
+        run: cargo build --release --features steamvr
+
       - name: Enable Linux desktop
         run: flutter config --enable-linux-desktop
 
@@ -161,6 +178,11 @@ jobs:
 
       - name: Build Linux
         run: flutter build linux --release
+
+      - name: Bundle VR library
+        run: |
+          cp mixtape_vr/target/release/libmixtape_vr.so \
+            build/linux/x64/release/bundle/lib/libmixtape_vr.so
 
       - name: Create tarball
         run: |
@@ -188,6 +210,23 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            mixtape_vr/target
+          key: windows-cargo-${{ hashFiles('mixtape_vr/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: Build Rust VR bridge (Windows)
+        working-directory: mixtape_vr
+        run: cargo build --release --features steamvr
+
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
 
@@ -203,6 +242,10 @@ jobs:
 
       - name: Build Windows
         run: flutter build windows --release
+
+      - name: Bundle VR library
+        run: Copy-Item mixtape_vr\target\release\mixtape_vr.dll build\windows\x64\runner\Release\
+        shell: pwsh
 
       - name: Create ZIP
         run: |

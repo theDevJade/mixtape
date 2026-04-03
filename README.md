@@ -1,6 +1,10 @@
 # mixtape
 
-Open source music player built with Flutter. Mix YouTube, SoundCloud, Spotify playlists, and local files in the same queue.
+[![Build](https://github.com/theDevJade/mixtape/actions/workflows/build.yml/badge.svg)](https://github.com/theDevJade/mixtape/actions/workflows/build.yml)
+[![COPR](https://copr.fedorainfracloud.org/coprs/mixtape/mixtape/package/mixtape/status_image/last_build.png)](https://copr.fedorainfracloud.org/coprs/mixtape/mixtape/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Open source music player built with Flutter. Mix YouTube, SoundCloud, Spotify playlists, local files, and more in the same queue.
 
 **Platforms:** iOS · Android · macOS · Windows · Linux
 
@@ -19,7 +23,7 @@ Open source music player built with Flutter. Mix YouTube, SoundCloud, Spotify pl
 - Mix tracks from different sources in one queue
 - Background playback with lock screen controls on mobile
 - Discord Rich Presence on desktop, shows what you're playing in your status
-- Synced lyrics from [lrclib.net](https://lrclib.net), no API key needed
+- Synced lyrics from [lrclib.net](https://lrclib.net)
 - Colors adapt to album art
 - Playlists and queue saved locally with SQLite
 - Each source is its own plugin, easy to add new ones
@@ -126,26 +130,6 @@ Pulls in your Spotify playlists and library. **Spotify is for playlists/metadata
 2. Add `com.mixtape://callback` as a redirect URI
 3. Put your Client ID in **Settings → Sources → Spotify**
 
-**Redirect URI setup (one-time per platform):**
-
-- **Android** - add to `AndroidManifest.xml` inside `<activity>`:
-  ```xml
-  <intent-filter android:autoVerify="true">
-    <action android:name="android.intent.action.VIEW"/>
-    <category android:name="android.intent.category.DEFAULT"/>
-    <category android:name="android.intent.category.BROWSABLE"/>
-    <data android:scheme="com.mixtape" android:host="callback"/>
-  </intent-filter>
-  ```
-- **iOS / macOS** - add to `Info.plist`:
-  ```xml
-  <key>CFBundleURLTypes</key>
-  <array><dict>
-    <key>CFBundleURLSchemes</key>
-    <array><string>com.mixtape</string></array>
-  </dict></array>
-  ```
-
 ---
 
 ### YouTube
@@ -198,6 +182,63 @@ Millions of tracks under Creative Commons licenses, free to stream.
 ### Local Files
 
 Pick audio files from your device and play them. Nothing to set up.
+
+---
+
+## SteamVR Overlay
+
+Mixtape includes a SteamVR dashboard overlay so you can control playback from inside any VR game or environment.
+
+### Prerequisites
+
+- SteamVR installed and running
+- Windows or Linux (macOS SteamVR support is limited but the bridge compiles on Apple Silicon)
+- The `mixtape_vr` Rust bridge; built automatically by the CI and bundled in every release zip/tarball
+
+### Interaction model: grab the earbud
+
+1. **Launch Mixtape while SteamVR is running.** The overlay appears as a small earbud icon floating near your configured ear (default: right ear).
+2. **Reach out with your controller** and press the **grip button** when the controller is near the earbud.  
+   → The full music panel "pops out" and is now held in your grabbing hand.
+3. **Use your other hand** to point at and click the panel (trigger to press buttons).
+4. **Release the grip button** to snap the panel back to earbud mode on your HMD.
+
+### Configuring the ear side
+
+In **Settings → VR** you can switch the earbud between your right and left ear. The setting takes effect on the next grip release.
+
+### Auto-registration
+
+On first launch Mixtape calls `IVRApplications::AddApplicationManifest` with the bundled `mixtape.vrmanifest`. This registers the app with SteamVR so it can be re-launched from the SteamVR dashboard and survives headset reboots.
+
+### Building the VR bridge from source
+
+```bash
+cd mixtape_vr
+cargo build --release --features steamvr
+```
+
+The resulting `libmixtape_vr.so` / `mixtape_vr.dll` must be placed next to the Flutter bundle (done automatically by `flutter build linux/windows`).
+
+### Interaction model
+
+1. Start SteamVR (physical headset or the SteamVR null driver for headless testing).
+2. Run `flutter run` (Linux/Windows) or open the built `.app` on macOS.
+3. Put on the headset. Look slightly right (or left if configured) — a small disc appears near your ear.
+4. Move your right controller toward the disc and press the **grip** button.  
+   → A full player panel appears in your hand with album art, seek bar, and transport controls.
+5. With your **left controller**, point at the play/pause button and pull the **trigger** — playback starts.
+6. Release the **grip** on the right controller.  
+   → Panel shrinks back to the earbud and stays attached to your HMD.
+
+### Fedora / COPR
+
+Pre-built RPMs for Fedora are published to the [`mixtape` COPR](https://copr.fedorainfracloud.org/coprs/mixtape/mixtape/) on every release:
+
+```bash
+sudo dnf copr enable mixtape/mixtape
+sudo dnf install mixtape
+```
 
 ---
 

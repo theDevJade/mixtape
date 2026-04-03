@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
@@ -9,16 +11,55 @@ import '../../core/plugins/source_plugin.dart';
 import '../../shared/widgets/cover_art.dart';
 import '../player/now_playing_screen.dart';
 
-final _searchQueryProvider = StateProvider<String>((ref) => '');
+/// Raw input from the text field – updated on every keystroke.
+final _searchInputProvider = StateProvider<String>((ref) => '');
+
+/// Debounced query that only updates 500 ms after the user stops typing.
+/// This is what actually triggers API calls.
+final _debouncedQueryProvider = StateProvider<String>((ref) => '');
+
 final _activePluginIdProvider = StateProvider<String?>((ref) => null);
+
+/// Simple LRU-ish in-memory search cache keyed by "pluginFilter|query".
+final _searchCache = <String, _CacheEntry>{};
+const _maxCacheEntries = 30;
+
+class _CacheEntry {
+  final List<SourceResult> results;
+  final DateTime createdAt;
+  _CacheEntry(this.results) : createdAt = DateTime.now();
+
+  bool get isExpired =>
+      DateTime.now().difference(createdAt) > const Duration(minutes: 5);
+}
+
+String _cacheKey(String query, String? pluginId) =>
+    '${pluginId ?? '*'}|${query.trim().toLowerCase()}';
+
+void _putCache(String key, List<SourceResult> results) {
+  if (_searchCache.length >= _maxCacheEntries) {
+    // evict oldest entry
+    final oldest = _searchCache.entries.reduce(
+      (a, b) => a.value.createdAt.isBefore(b.value.createdAt) ? a : b,
+    );
+    _searchCache.remove(oldest.key);
+  }
+  _searchCache[key] = _CacheEntry(results);
+}
+
 final _searchResultsProvider = FutureProvider.autoDispose<List<SourceResult>>((
   ref,
 ) async {
-  final query = ref.watch(_searchQueryProvider);
+  final query = ref.watch(_debouncedQueryProvider);
   final pluginId = ref.watch(_activePluginIdProvider);
   final registry = ref.watch(pluginRegistryProvider);
 
-  if (query.isEmpty) return [];
+  if (query.trim().isEmpty) return [];
+
+  // Check cache first
+  final key = _cacheKey(query, pluginId);
+  final cached = _searchCache[key];
+  if (cached != null && !cached.isExpired) return cached.results;
 
   final plugins = pluginId != null
       ? [registry[pluginId]].whereType<MixtapeSourcePlugin>().toList()
@@ -27,7 +68,10 @@ final _searchResultsProvider = FutureProvider.autoDispose<List<SourceResult>>((
   final results = await Future.wait(
     plugins.map((p) => p.search(query).catchError((_) => <SourceResult>[])),
   );
-  return results.expand((r) => r).toList();
+  final flat = results.expand((r) => r).toList();
+
+  _putCache(key, flat);
+  return flat;
 });
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -39,9 +83,11 @@ class SearchScreen extends ConsumerStatefulWidget {
 
 class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _controller = TextEditingController();
+  Timer? _debounceTimer;
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -81,12 +127,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     icon: const Icon(Icons.clear_rounded),
                     onPressed: () {
                       _controller.clear();
-                      ref.read(_searchQueryProvider.notifier).state = '';
+                      _debounceTimer?.cancel();
+                      ref.read(_searchInputProvider.notifier).state = '';
+                      ref.read(_debouncedQueryProvider.notifier).state = '';
                     },
                   ),
               ],
               onChanged: (value) {
-                ref.read(_searchQueryProvider.notifier).state = value;
+                ref.read(_searchInputProvider.notifier).state = value;
+                _debounceTimer?.cancel();
+                _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+                  ref.read(_debouncedQueryProvider.notifier).state = value;
+                });
               },
             ),
           ),
@@ -134,7 +186,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (results) {
                 if (results.isEmpty &&
-                    ref.read(_searchQueryProvider).isNotEmpty) {
+                    ref.read(_debouncedQueryProvider).isNotEmpty) {
                   return const Center(child: Text('No results'));
                 }
                 if (results.isEmpty) {

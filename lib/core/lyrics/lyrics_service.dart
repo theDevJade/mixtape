@@ -42,6 +42,13 @@ class LyricsService {
     ),
   );
 
+  // In-memory lyrics cache: "title|artist" → result (or null sentinel)
+  static final _cache = <String, LyricsResult?>{};
+  static const _maxCache = 50;
+
+  static String _lyricsKey(String title, String? artist) =>
+      '${title.toLowerCase()}|${(artist ?? '').toLowerCase()}';
+
   static Future<LyricsResult?> fetch(Track track) async {
     // Skip album when it's a generic streaming provider label (e.g. "YouTube"),
     // since LRCLIB won't have that as an album and it causes a 404 miss.
@@ -53,6 +60,13 @@ class LyricsService {
     // hitting LRCLIB so we get a real match.
     final cleanTitle = _extractCleanTitle(track.title);
     final cleanArtist = _extractCleanArtist(track.artist, track.title);
+
+    // Check cache
+    final key = _lyricsKey(cleanTitle, cleanArtist);
+    if (_cache.containsKey(key)) {
+      dev.log('cache hit for "$cleanTitle"', name: _tag);
+      return _cache[key];
+    }
 
     dev.log(
       'fetch → rawTitle="${track.title}" cleanTitle="$cleanTitle" '

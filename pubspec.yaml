@@ -2,7 +2,7 @@ name: mixtape
 description: "An extremely customizable, open source, and extendable music app."
 publish_to: 'none'
 
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.11.4
@@ -37,7 +37,7 @@ dependencies:
   # HTTP & networking
   dio: ^5.8.0+1
 
-  # Local file picking
+  # Local file picking & metadata
   file_picker: ^10.1.7
 
   # Image caching
@@ -65,6 +65,8 @@ dependencies:
   video_player: ^2.9.2
   dart_discord_presence: ^1.2.0
   opus_caf_converter_dart: ^1.0.1
+  audio_metadata_reader: ^1.4.2
+  ffi: ^2.1.3
 
 dev_dependencies:
   flutter_test:
@@ -80,3 +82,4 @@ flutter:
   assets:
     - assets/images/
     - assets/icons/
+    - assets/mixtape.vrmanifest

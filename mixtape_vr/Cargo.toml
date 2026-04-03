@@ -1,0 +1,17 @@
+[package]
+name = "mixtape_vr"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mixtape_vr"
+crate-type = ["cdylib"]
+
+# The `steamvr` feature enables real OpenVR overlay code.
+# Built with --features steamvr on Windows/Linux (CMake) and macOS (Xcode script).
+# Without it, all exports compile as no-op stubs.
+[features]
+steamvr = ["dep:openvr_sys"]
+
+[dependencies]
+openvr_sys = { version = "2.1.3", optional = true }

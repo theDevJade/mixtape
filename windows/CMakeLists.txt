@@ -57,6 +57,27 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# ─── Rust / OpenVR overlay crate ─────────────────────────────────────────────
+# Only built when cargo is present (i.e. on a developer machine or CI that has
+# the Rust toolchain installed).  The DLL is optional at runtime: if SteamVR is
+# absent, VrBridge.tryLoad() returns false and the VR path is a no-op.
+find_program(CARGO_EXECUTABLE cargo)
+if(CARGO_EXECUTABLE)
+  set(MIXTAPE_VR_DIR "${CMAKE_SOURCE_DIR}/../mixtape_vr")
+  set(MIXTAPE_VR_DLL "${MIXTAPE_VR_DIR}/target/release/mixtape_vr.dll")
+  add_custom_target(mixtape_vr_rust ALL
+    COMMAND "${CARGO_EXECUTABLE}" build --release --features steamvr
+    WORKING_DIRECTORY "${MIXTAPE_VR_DIR}"
+    BYPRODUCTS "${MIXTAPE_VR_DLL}"
+    COMMENT "Building Rust OpenVR overlay crate (mixtape_vr)"
+  )
+  add_dependencies(${BINARY_NAME} mixtape_vr_rust)
+  install(FILES "${MIXTAPE_VR_DLL}"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}"
+    COMPONENT Runtime
+    OPTIONAL
+  )
+endif()
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can

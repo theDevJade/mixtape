@@ -13,3 +13,6 @@ coverage/
 
 **/doc/api/
 **/ios/Flutter/.last_build_id
+
+# Cargo / Rust
+mixtape_vr/target/

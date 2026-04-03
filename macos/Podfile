@@ -39,4 +39,29 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
   end
+
+  # Build the mixtape_vr Rust cdylib and embed it in the macOS app bundle.
+  # The dylib is optional at runtime: VrBridge.tryLoad() silently fails if SteamVR
+  # is absent.  install_name_tool fixes the LC_ID_DYLIB so dlopen can find it via
+  # @rpath (Flutter's macOS rpath includes @executable_path/../Frameworks).
+  require 'xcodeproj'
+  project_path = File.expand_path('../Runner.xcodeproj', __FILE__)
+  project = Xcodeproj::Project.open(project_path)
+  runner_target = project.targets.find { |t| t.name == 'Runner' }
+
+  phase_name = 'Build Rust mixtape_vr'
+  unless runner_target.shell_script_build_phases.any? { |p| p.name == phase_name }
+    phase = runner_target.new_shell_script_build_phase(phase_name)
+    phase.shell_script = <<~'SCRIPT'
+      set -e
+      CRATE_DIR="${SRCROOT}/../mixtape_vr"
+      cargo build --release --features steamvr --manifest-path "${CRATE_DIR}/Cargo.toml"
+      DYLIB_SRC="${CRATE_DIR}/target/release/libmixtape_vr.dylib"
+      DEST="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/libmixtape_vr.dylib"
+      mkdir -p "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"
+      cp "${DYLIB_SRC}" "${DEST}"
+      install_name_tool -id "@rpath/libmixtape_vr.dylib" "${DEST}"
+    SCRIPT
+    project.save
+  end
 end

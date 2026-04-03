@@ -12,6 +12,8 @@ import 'core/settings/settings_provider.dart';
 import 'core/providers.dart';
 import 'core/theme/app_theme.dart';
 import 'shared/widgets/adaptive_scaffold.dart';
+import 'features/vr/vr_earbud_widget.dart';
+import 'features/vr/vr_overlay_runner.dart';
 
 class MixtapeApp extends ConsumerWidget {
   const MixtapeApp({super.key});
@@ -54,6 +56,28 @@ class MixtapeApp extends ConsumerWidget {
             ],
           );
         }
+
+        // VR overlay: wrap full app in a RepaintBoundary so the SteamVR
+        // expanded-mode frame capture can read it, and add an off-screen
+        // compact earbud widget for earbud-mode capture.
+        content = Stack(
+          clipBehavior: Clip.none,
+          children: [
+            RepaintBoundary(key: VrOverlayRunner.appCaptureKey, child: content),
+            Positioned(
+              left: -4000,
+              top: 0,
+              child: SizedBox(
+                width: 360,
+                height: 120,
+                child: RepaintBoundary(
+                  key: VrOverlayRunner.earbudCaptureKey,
+                  child: const VrEarbudWidget(),
+                ),
+              ),
+            ),
+          ],
+        );
 
         return content;
       },

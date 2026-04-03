@@ -1,0 +1,19 @@
+{
+  "source": "builtin",
+  "applications": [
+    {
+      "app_key": "steam.overlay.com.mixtape.vr",
+      "launch_type": "binary",
+      "binary_path_windows": "mixtape.exe",
+      "binary_path_linux": "mixtape",
+      "binary_path_macos": "mixtape",
+      "is_dashboard_overlay": true,
+      "strings": {
+        "en_us": {
+          "name": "Mixtape",
+          "description": "Mixtape music player VR overlay"
+        }
+      }
+    }
+  ]
+}

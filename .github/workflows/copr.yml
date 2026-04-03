@@ -1,0 +1,74 @@
+name: COPR (Fedora)
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build (e.g. v0.1.0)'
+        required: true
+
+jobs:
+  copr:
+    name: Submit to Fedora COPR
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: ver
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          # Strip leading 'v' if present
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+
+      - name: Install copr-cli
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y python3-pip
+          pip3 install copr-cli
+
+      - name: Write copr-cli config
+        run: |
+          mkdir -p ~/.config
+          cat > ~/.config/copr << EOF
+          [copr-cli]
+          login    = ${{ secrets.COPR_LOGIN }}
+          username = ${{ secrets.COPR_USERNAME }}
+          token    = ${{ secrets.COPR_TOKEN }}
+          copr_url = https://copr.fedorainfracloud.org
+          EOF
+
+      - name: Create source tarball
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          SRCDIR="mixtape-$VERSION"
+          mkdir -p "dist/$SRCDIR"
+          # Copy everything except build artefacts and .git
+          rsync -a --exclude='.git' --exclude='build/' --exclude='mixtape_vr/target/' \
+            . "dist/$SRCDIR/"
+          tar czf "dist/mixtape-$VERSION.tar.gz" -C dist "$SRCDIR"
+
+      - name: Upload source tarball to GitHub release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          gh release upload "${{ steps.ver.outputs.tag }}" \
+            "dist/mixtape-$VERSION.tar.gz" --clobber
+
+      - name: Update spec version
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          sed -i "s/^Version:.*/Version:        $VERSION/" packaging/mixtape.spec
+
+      - name: Submit COPR build
+        run: |
+          VERSION=${{ steps.ver.outputs.version }}
+          TARBALL_URL="https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}/mixtape-$VERSION.tar.gz"
+          copr-cli build --nowait mixtape "$TARBALL_URL"

@@ -74,6 +74,24 @@ set_target_properties(${BINARY_NAME}
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# ─── Rust / OpenVR overlay crate ─────────────────────────────────────────────
+find_program(CARGO_EXECUTABLE cargo)
+if(CARGO_EXECUTABLE)
+  set(MIXTAPE_VR_DIR "${CMAKE_SOURCE_DIR}/../mixtape_vr")
+  set(MIXTAPE_VR_SO "${MIXTAPE_VR_DIR}/target/release/libmixtape_vr.so")
+  add_custom_target(mixtape_vr_rust ALL
+    COMMAND "${CARGO_EXECUTABLE}" build --release --features steamvr
+    WORKING_DIRECTORY "${MIXTAPE_VR_DIR}"
+    BYPRODUCTS "${MIXTAPE_VR_SO}"
+    COMMENT "Building Rust OpenVR overlay crate (mixtape_vr)"
+  )
+  add_dependencies(${BINARY_NAME} mixtape_vr_rust)
+  install(FILES "${MIXTAPE_VR_SO}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime
+    OPTIONAL
+  )
+endif()
 
 # === Installation ===
 # By default, "installing" just makes a relocatable bundle in the build

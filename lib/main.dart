@@ -19,9 +19,14 @@ import 'core/plugins/jamendo/jamendo_plugin.dart';
 import 'core/plugins/soundcloud/soundcloud_plugin.dart';
 import 'core/plugins/youtube/youtube_plugin.dart';
 import 'core/plugins/spotify/spotify_plugin.dart';
+import 'core/plugins/spotify_public/spotify_public_plugin.dart';
+import 'core/plugins/deezer/deezer_plugin.dart';
+import 'core/plugins/internet_archive/internet_archive_plugin.dart';
+import 'core/plugins/free_music_archive/fma_plugin.dart';
 import 'core/plugins/ytdlp/ytdlp_plugin.dart';
 import 'core/providers.dart';
 import 'core/settings/settings_provider.dart';
+import 'features/vr/vr_overlay_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,6 +64,10 @@ Future<void> main() async {
   registry.register(SoundCloudPlugin());
   registry.register(YouTubePlugin());
   registry.register(SpotifyPlugin());
+  registry.register(SpotifyPublicPlugin());
+  registry.register(DeezerPlugin());
+  registry.register(InternetArchivePlugin());
+  registry.register(FreeMusicArchivePlugin());
 
   if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
     registry.register(YtDlpPlugin());
@@ -126,6 +135,12 @@ Future<void> main() async {
       ],
       child: const MixtapeApp(),
     ),
+  );
+
+  // Start SteamVR overlay after the first frame is rendered so that
+  // RepaintBoundary nodes are already attached to the render tree.
+  WidgetsBinding.instance.addPostFrameCallback(
+    (_) => VrOverlayService.instance.maybeInit(),
   );
 }
 
