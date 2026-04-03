@@ -86,11 +86,6 @@ if(CARGO_EXECUTABLE)
     COMMENT "Building Rust OpenVR overlay crate (mixtape_vr)"
   )
   add_dependencies(${BINARY_NAME} mixtape_vr_rust)
-  install(FILES "${MIXTAPE_VR_SO}"
-    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
-    COMPONENT Runtime
-    OPTIONAL
-  )
 endif()
 
 # === Installation ===
@@ -108,6 +103,14 @@ install(CODE "
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}/lib")
+
+if(CARGO_EXECUTABLE)
+  install(FILES "${MIXTAPE_VR_SO}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime
+    OPTIONAL
+  )
+endif()
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
   COMPONENT Runtime)
