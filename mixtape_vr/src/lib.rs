@@ -8,6 +8,9 @@
 #![allow(clippy::missing_safety_doc)]
 
 #[cfg(feature = "steamvr")]
+mod vulkan;
+
+#[cfg(feature = "steamvr")]
 mod overlay;
 
 // ─── C API ──────────────────────────────────────────────────────────────────
@@ -52,17 +55,18 @@ pub unsafe extern "C" fn mvr_create_overlay(
 /// Submit a raw RGBA frame for the overlay (CPU buffer path).
 ///
 /// `rgba` must point to `width * height * 4` bytes in RGBA8 order.
+/// Returns 0 on success, or an `EVROverlayError` code on failure.
 #[no_mangle]
 pub unsafe extern "C" fn mvr_set_overlay_raw(
     handle: u64,
     rgba: *const u8,
     width: u32,
     height: u32,
-) {
+) -> i32 {
     #[cfg(feature = "steamvr")]
-    overlay::set_overlay_raw(handle, rgba, width, height);
+    return overlay::set_overlay_raw(handle, rgba, width, height);
     #[cfg(not(feature = "steamvr"))]
-    let _ = (handle, rgba, width, height);
+    { let _ = (handle, rgba, width, height); -1 }
 }
 
 /// Set overlay physical width in metres (height is derived from the texture
@@ -84,17 +88,11 @@ pub unsafe extern "C" fn mvr_show_overlay(handle: u64) {
     let _ = handle;
 }
 
-/// Hide the overlay without destroying it.
-#[no_mangle]
-pub unsafe extern "C" fn mvr_hide_overlay(handle: u64) {
-    #[cfg(feature = "steamvr")]
-    overlay::hide_overlay(handle);
-    #[cfg(not(feature = "steamvr"))]
-    let _ = handle;
-}
-
-/// Anchor the overlay to the HMD (device index 0) using the supplied 3×4
-/// row-major transform matrix (12 `f32` values: 3 rows × 4 columns).
+/// Anchor the overlay to the HMD (device index 0) using the supplied 3x4
+/// row-major transform matrix (12 `f32` values: 3 rows x 4 columns).
+///
+/// Call this every frame (or whenever the desired position changes) to move
+/// the player panel relative to the wearer's head.
 ///
 /// Translation lives in column 3: `matrix[0*4+3]`, `[1*4+3]`, `[2*4+3]`.
 #[no_mangle]
@@ -105,30 +103,67 @@ pub unsafe extern "C" fn mvr_set_transform_hmd(handle: u64, matrix: *const f32) 
     let _ = (handle, matrix);
 }
 
-/// Anchor the overlay to an arbitrary tracked device (e.g. a controller).
-///
-/// `device_index` is the OpenVR tracked device index (0 = HMD, 1/2 =
-/// controllers in most configurations).
+/// Disable mouse input on the overlay so it does not consume controller laser
+/// pointer events. The overlay becomes an informational display only.
 #[no_mangle]
-pub unsafe extern "C" fn mvr_set_transform_device(
-    handle: u64,
-    device_index: u32,
-    matrix: *const f32,
-) {
+pub unsafe extern "C" fn mvr_set_input_method_none(handle: u64) {
     #[cfg(feature = "steamvr")]
-    overlay::set_transform_tracked_device(handle, device_index, matrix);
-    #[cfg(not(feature = "steamvr"))]
-    let _ = (handle, device_index, matrix);
-}
-
-/// Enable laser-pointer mouse input on the overlay so that SteamVR forwards
-/// controller intersections as Win32 / X11 mouse events to the process.
-#[no_mangle]
-pub unsafe extern "C" fn mvr_set_input_method_mouse(handle: u64) {
-    #[cfg(feature = "steamvr")]
-    overlay::set_input_method_mouse(handle);
+    overlay::set_input_method_none(handle);
     #[cfg(not(feature = "steamvr"))]
     let _ = handle;
+}
+
+/// Enable mouse input on the overlay so controller laser pointer events are
+/// delivered as `VREvent_MouseMove` / `VREvent_MouseDown` / `VREvent_MouseUp`
+/// events and can be drained with `mvr_poll_event`.
+///
+/// `scale_x` / `scale_y` set the coordinate range for mouse events:
+///   - pass the overlay's pixel dimensions to get pixel-space coordinates, or
+///   - pass `1.0` / `1.0` for normalised UV coordinates in `[0..1]`.
+///
+/// Call this after creating the overlay and whenever the texture dimensions
+/// change.  Coordinates returned by `mvr_poll_event` will be in
+/// `[0..scale_x]` (x, left→right) and `[0..scale_y]` (y, bottom→top).
+#[no_mangle]
+#[allow(unused_variables)]
+pub unsafe extern "C" fn mvr_set_input_method_mouse(handle: u64, scale_x: f32, scale_y: f32) {
+    #[cfg(feature = "steamvr")]
+    overlay::set_input_method_mouse(handle, scale_x, scale_y);
+    #[cfg(not(feature = "steamvr"))]
+    let _ = (handle, scale_x, scale_y);
+}
+
+/// Poll the VRSystem event queue for a `VREvent_Quit` (700).
+///
+/// When found, `AcknowledgeQuit_Exiting` is called immediately so SteamVR
+/// knows the app acknowledged the request.  Returns 1 when a quit event was
+/// consumed; 0 when the queue is empty (no quit pending).
+///
+/// The caller must call `mvr_shutdown()` and exit the process after receiving 1
+/// so that the process terminates within SteamVR's 5-second grace window.
+#[no_mangle]
+pub unsafe extern "C" fn mvr_should_quit() -> i32 {
+    #[cfg(feature = "steamvr")]
+    { overlay::poll_should_quit() }
+    #[cfg(not(feature = "steamvr"))]
+    { 0 }
+}
+
+/// Attach the overlay to the user's right wrist.
+///
+/// Uses `SetOverlayTransformTrackedDeviceRelative` with a fixed wrist-space
+/// offset (mirrored from the wayvr watch position). Also calls
+/// `SetOverlayInputMethod(None)` so the overlay never steals controller input.
+///
+/// Returns the device index used on success, or -1 when the right controller
+/// is not currently tracked (call again later when it appears).
+#[no_mangle]
+#[allow(unused_variables)]
+pub unsafe extern "C" fn mvr_attach_to_right_wrist(handle: u64) -> i32 {
+    #[cfg(feature = "steamvr")]
+    return overlay::attach_to_right_wrist(handle);
+    #[cfg(not(feature = "steamvr"))]
+    return -1;
 }
 
 /// Dequeue the next overlay event.
@@ -137,11 +172,11 @@ pub unsafe extern "C" fn mvr_set_input_method_mouse(handle: u64) {
 ///
 /// `out_event_type`:
 ///   0 = mouse move / hover
-///   1 = mouse button down  (trigger / primary button)
+///   1 = mouse button down
 ///   2 = mouse button up
 ///
 /// `out_device_index`: the tracked device that generated the event.
-/// `out_x`, `out_y`: normalised UV cursor position [0 … 1].
+/// `out_x`, `out_y`: normalised UV cursor position [0 .. 1].
 #[no_mangle]
 pub unsafe extern "C" fn mvr_poll_event(
     handle: u64,
@@ -156,41 +191,6 @@ pub unsafe extern "C" fn mvr_poll_event(
     {
         let _ = (handle, out_event_type, out_device_index, out_x, out_y);
         0
-    }
-}
-
-/// Set the overlay transform anchored to a specific controller at identity
-/// offset (used to hold the expanded panel in the grabbing hand).
-///
-/// `device_index`: OpenVR tracked device index of the controller.
-#[no_mangle]
-pub unsafe extern "C" fn mvr_set_transform_controller(handle: u64, device_index: u32) {
-    #[cfg(feature = "steamvr")]
-    overlay::set_transform_controller_identity(handle, device_index);
-    #[cfg(not(feature = "steamvr"))]
-    let _ = (handle, device_index);
-}
-
-/// Disable pointer input on the overlay (earbud resting mode).
-#[no_mangle]
-pub unsafe extern "C" fn mvr_set_input_none(handle: u64) {
-    #[cfg(feature = "steamvr")]
-    overlay::set_input_method_none(handle);
-    #[cfg(not(feature = "steamvr"))]
-    let _ = handle;
-}
-
-/// Return the tracked device index of the left (0) or right (1) controller.
-///
-/// Returns `0xFFFFFFFF` if the controller is not tracked / unavailable.
-#[no_mangle]
-pub unsafe extern "C" fn mvr_get_controller_index(hand: u32) -> u32 {
-    #[cfg(feature = "steamvr")]
-    return overlay::get_controller_index(hand);
-    #[cfg(not(feature = "steamvr"))]
-    {
-        let _ = hand;
-        0xFFFF_FFFF
     }
 }
 

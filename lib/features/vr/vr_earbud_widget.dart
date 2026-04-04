@@ -38,7 +38,7 @@ class VrEarbudWidget extends ConsumerWidget {
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: VrOverlayService.instance.toggleState,
+        onTap: null,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           child: Row(

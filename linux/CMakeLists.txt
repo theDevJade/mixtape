@@ -79,6 +79,11 @@ find_program(CARGO_EXECUTABLE cargo)
 if(CARGO_EXECUTABLE)
   set(MIXTAPE_VR_DIR "${CMAKE_SOURCE_DIR}/../mixtape_vr")
   set(MIXTAPE_VR_SO "${MIXTAPE_VR_DIR}/target/release/libmixtape_vr.so")
+  # libopenvr_api.so is copied by the ovr_overlay_sys build script into a
+  # per-crate OUT_DIR under the release build directory.
+  file(GLOB OPENVR_API_SO_GLOB
+    "${MIXTAPE_VR_DIR}/target/release/build/ovr_overlay_sys-*/out/libopenvr_api.so"
+  )
   add_custom_target(mixtape_vr_rust ALL
     COMMAND "${CARGO_EXECUTABLE}" build --release --features steamvr
     WORKING_DIRECTORY "${MIXTAPE_VR_DIR}"
@@ -110,6 +115,15 @@ if(CARGO_EXECUTABLE)
     COMPONENT Runtime
     OPTIONAL
   )
+  # Also install libopenvr_api.so so the dynamic linker finds it next to
+  # libmixtape_vr.so (the $ORIGIN RPATH embedded by build.rs resolves here).
+  if(OPENVR_API_SO_GLOB)
+    list(GET OPENVR_API_SO_GLOB 0 OPENVR_API_SO)
+    install(FILES "${OPENVR_API_SO}"
+      DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+      COMPONENT Runtime
+    )
+  endif()
 endif()
 
 install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"

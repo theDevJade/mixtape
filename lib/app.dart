@@ -14,7 +14,6 @@ import 'core/theme/app_theme.dart';
 import 'shared/widgets/adaptive_scaffold.dart';
 import 'features/vr/vr_earbud_widget.dart';
 import 'features/vr/vr_overlay_runner.dart';
-import 'features/vr/vr_overlay_service.dart';
 
 class MixtapeApp extends ConsumerWidget {
   const MixtapeApp({super.key});
@@ -419,13 +418,6 @@ class _AppRootState extends ConsumerState<_AppRoot>
             .setCrossfade(enabled: enabled, durationSeconds: seconds);
       },
     );
-
-    // Keep VR earbud ear side in sync with settings.
-    ref.listen(appSettingsProvider.select((s) => s.vrEarRight), (_, earRight) {
-      VrOverlayService.instance.updateEarSide(
-        earRight ? EarSide.right : EarSide.left,
-      );
-    });
 
     return const AdaptiveScaffold();
   }

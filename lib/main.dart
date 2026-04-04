@@ -44,6 +44,8 @@ Future<void> main() async {
 
   PlatformDispatcher.instance.onError = (error, stack) {
     if (_isKnownWebViewDetachChannelError(error)) return true;
+    // Shut down SteamVR overlay cleanly before the isolate dies.
+    VrOverlayService.instance.dispose();
     return false;
   };
 
@@ -142,6 +144,19 @@ Future<void> main() async {
   WidgetsBinding.instance.addPostFrameCallback(
     (_) => VrOverlayService.instance.maybeInit(),
   );
+
+  // Shut down SteamVR overlay cleanly on Ctrl-C or SIGTERM so the headset
+  // screen doesn't stay black after the process exits.
+  if (Platform.isLinux || Platform.isMacOS) {
+    ProcessSignal.sigint.watch().listen((_) {
+      VrOverlayService.instance.dispose();
+      exit(0);
+    });
+    ProcessSignal.sigterm.watch().listen((_) {
+      VrOverlayService.instance.dispose();
+      exit(0);
+    });
+  }
 }
 
 bool _isKnownWebViewDetachChannelError(Object error) {
