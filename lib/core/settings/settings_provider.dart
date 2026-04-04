@@ -38,6 +38,7 @@ class AppSettings {
   final bool showYoutubeVideoInPlayer;
   // SteamVR overlay
   final bool vrEarRight;
+  final bool vrOverlayEnabled;
 
   const AppSettings({
     this.brightness = Brightness.dark,
@@ -61,6 +62,7 @@ class AppSettings {
     this.rearrangePlayerControls = false,
     this.showYoutubeVideoInPlayer = false,
     this.vrEarRight = true,
+    this.vrOverlayEnabled = true,
   });
 
   AppSettings copyWith({
@@ -86,6 +88,7 @@ class AppSettings {
     bool? rearrangePlayerControls,
     bool? showYoutubeVideoInPlayer,
     bool? vrEarRight,
+    bool? vrOverlayEnabled,
   }) {
     return AppSettings(
       brightness: brightness ?? this.brightness,
@@ -117,6 +120,7 @@ class AppSettings {
       showYoutubeVideoInPlayer:
           showYoutubeVideoInPlayer ?? this.showYoutubeVideoInPlayer,
       vrEarRight: vrEarRight ?? this.vrEarRight,
+      vrOverlayEnabled: vrOverlayEnabled ?? this.vrOverlayEnabled,
     );
   }
 }
@@ -147,6 +151,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   static const _keyRearrangeControls = 'rearrange_player_controls';
   static const _keyShowYoutubeVideoInPlayer = 'show_youtube_video_in_player';
   static const _keyVrEarRight = 'vr_ear_right';
+  static const _keyVrOverlayEnabled = 'vr_overlay_enabled';
 
   late SharedPreferences _prefs;
 
@@ -195,6 +200,7 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
       showYoutubeVideoInPlayer:
           _prefs.getBool(_keyShowYoutubeVideoInPlayer) ?? false,
       vrEarRight: _prefs.getBool(_keyVrEarRight) ?? true,
+      vrOverlayEnabled: _prefs.getBool(_keyVrOverlayEnabled) ?? true,
     );
   }
 
@@ -309,6 +315,11 @@ class AppSettingsNotifier extends Notifier<AppSettings> {
   Future<void> setVrEarRight(bool v) async {
     state = state.copyWith(vrEarRight: v);
     await _prefs.setBool(_keyVrEarRight, v);
+  }
+
+  Future<void> setVrOverlayEnabled(bool v) async {
+    state = state.copyWith(vrOverlayEnabled: v);
+    await _prefs.setBool(_keyVrOverlayEnabled, v);
   }
 }
 

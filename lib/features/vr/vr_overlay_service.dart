@@ -17,6 +17,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'vr_bridge.dart';
 import 'vr_overlay_runner.dart';
@@ -75,8 +76,14 @@ class VrOverlayService {
   ///
   /// Silently returns if the platform is unsupported, the native library is
   /// absent, or SteamVR is not running.
-  void maybeInit() {
+  Future<void> maybeInit() async {
+    if (_running) return;
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (!(prefs.getBool('vr_overlay_enabled') ?? true)) {
+      debugPrint('[VrOverlay] disabled by settings');
+      return;
+    }
     if (!_bridge.tryLoad()) {
       debugPrint('[VrOverlay] bridge not available');
       return;

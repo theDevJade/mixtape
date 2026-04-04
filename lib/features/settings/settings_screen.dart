@@ -9,6 +9,7 @@ import '../../core/database/database.dart';
 import '../../core/providers.dart';
 import '../../core/settings/settings_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../vr/vr_overlay_service.dart';
 import 'eq_screen.dart';
 
 final _audioCacheStatsProvider = FutureProvider<AudioCacheStats>((ref) async {
@@ -367,6 +368,20 @@ class SettingsScreen extends ConsumerWidget {
           // ── SteamVR ───────────────────────────────────────────────────────
           if (!Platform.isAndroid && !Platform.isIOS) ...[
             _SectionHeader('SteamVR Overlay'),
+            SwitchListTile(
+              secondary: const Icon(Icons.vrpano_rounded),
+              title: const Text('Enable SteamVR overlay'),
+              subtitle: const Text('Show the player as a wrist overlay in VR'),
+              value: settings.vrOverlayEnabled,
+              onChanged: (v) {
+                notifier.setVrOverlayEnabled(v);
+                if (v) {
+                  VrOverlayService.instance.maybeInit();
+                } else {
+                  VrOverlayService.instance.dispose();
+                }
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.headset_rounded),
               title: const Text('Earbud ear side'),
