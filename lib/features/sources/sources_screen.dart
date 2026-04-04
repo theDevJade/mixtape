@@ -4,6 +4,7 @@ import '../../core/providers.dart';
 import '../../core/plugins/source_plugin.dart';
 import '../../core/database/database.dart';
 import '../../shared/widgets/cover_art.dart';
+import 'local_files_screen.dart';
 
 final pluginConfigsProvider =
     FutureProvider.family<Map<String, String>, String>((ref, pluginId) async {
@@ -69,10 +70,16 @@ class _PluginCard extends ConsumerWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: plugin.configFields.isEmpty
+        trailing: plugin.capabilities.contains(PluginCapability.localFiles)
+            ? const Icon(Icons.folder_open_rounded)
+            : plugin.configFields.isEmpty
             ? const Icon(Icons.check_circle_rounded, color: Colors.green)
             : const Icon(Icons.settings_rounded),
-        onTap: plugin.configFields.isEmpty
+        onTap: plugin.capabilities.contains(PluginCapability.localFiles)
+            ? () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const LocalFilesScreen()),
+              )
+            : plugin.configFields.isEmpty
             ? null
             : () => _openSettings(context, ref, plugin),
       ),
