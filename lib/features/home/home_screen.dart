@@ -9,7 +9,6 @@ import '../../shared/widgets/cover_art.dart';
 import '../player/now_playing_screen.dart';
 import '../search/search_screen.dart';
 import '../sources/sources_screen.dart';
-import '../vr/vr_overlay_service.dart';
 
 final _recentlyPlayedProvider = StreamProvider<List<Track>>((ref) {
   final db = ref.watch(databaseProvider);
